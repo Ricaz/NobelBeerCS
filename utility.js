@@ -2,6 +2,12 @@ const path = require('path')
 const exec = require('child_process').exec
 const fs   = require('fs')
 
+function rng(min, max) {
+	min = Math.floor(min)
+	max = Math.floor(max) + 1
+	return Math.floor(Math.random() * (max - min) + min)
+}
+
 class Logger {
 	tcp(msg) {
 		console.log('[TCP]  ' + msg)
@@ -43,7 +49,7 @@ class Player {
 			let file = rng(1, files.length) + '.mp3'
 			let fullPath = path.join(soundDir, file)
 			console.log(`[MAIN] Playing ${fullPath}`)
-			exec(`mpv ${fullPath}`, (err, stdout, stderr) => {
+			exec(`${process.env.PLAYER} ${fullPath}`, (err, stdout, stderr) => {
 				if (err) {
 					console.log(`[MAIN] ${err}`)
 					return
