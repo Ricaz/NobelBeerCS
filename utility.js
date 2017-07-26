@@ -28,16 +28,12 @@ class Player {
 		let theme = process.env.THEME || 'default'
 		let soundDir = path.join(path.dirname(require.main.filename), '/sounds', theme, name)
 
-		fs.access(soundDir, (err) => { 
-			if (err) {
-				console.log(`[MAIN] ${err}`)
-				return
-			}		
-		})
-
 		fs.readdir(path.join(soundDir), (err, files) => {
 			if (err) {
-				console.log(`[MAIN] ${err}`)
+				if (err.code == 'ENOENT')
+					console.log(`[MAIN] No sounds for event "${name}"`)
+				else 
+					console.log(`[MAIN] ${err}`)
 				return
 			}
 
