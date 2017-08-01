@@ -1,3 +1,5 @@
+'use strict'
+
 const path = require('path')
 const exec = require('child_process').exec
 const fs   = require('fs')
