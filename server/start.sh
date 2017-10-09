@@ -1,17 +1,18 @@
 #!/bin/bash
 
 function diediedie {
+	echo "Shutting down.."
 	# Force-kill all backgrounded processes
-	kill -9 $CURSOR_PID
-	kill -9 $CHROMIUM_PID
-	kill -9 $PHP_PID
-	kill -9 $APLAY_PID
+	kill -9 $CURSOR_PID &> /dev/null
+	kill -9 $CHROMIUM_PID &> /dev/null
+	kill -9 $PHP_PID &> /dev/null
+	kill -9 $APLAY_PID &> /dev/null
 }
 
 echo "Starting stats system"
 export DISPLAY=:0
 
-trap "diediedie" SIGHUP SIGINT SIGTERM
+trap "diediedie" EXIT
 
 # Fix HDMI sound problem
 aplay -c2 -r48000 -fS16_LE < /dev/zero &

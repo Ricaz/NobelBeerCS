@@ -47,7 +47,7 @@
 	function connect()
 	{
 		try {
-			var host = "ws://192.168.80.11:5001/";
+			var host = "ws://127.0.0.1:5001/";
 			socket = new WebSocket(host);
 			
 			socket.onopen = function(msg)

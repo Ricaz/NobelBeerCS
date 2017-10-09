@@ -12,46 +12,61 @@
 #include <sqlx>
 #include <cellarray>
 
-new PLUGIN[]	= "Nobel Beer CS"
-new AUTHOR[]	= "Nobel Kollegiet"
-new VERSION[]	= "1.6"
+#define PLUGIN "Nobel Beer CS"
+#define AUTHOR "Nobel Kollegiet"
+#define VERSION "1.7"
+#define ACCESS ADMIN_SLAY
+#define MOD_STATE_STOPPED "STOPPED"
+#define MOD_STATE_STARTING "STARTING"
+#define MOD_STATE_STARTED "STARTED"
 
-new bool:ENABLED	= false
-new bool:PAUSE	= false
-new bool:SOUND	= false
-new bool:FLASH   = false
-new bool:BADUM   = false
-new bool:KNIFE   = false
-new ACCESS	= ADMIN_SLAY
+new bool:ENABLED = false
+new bool:PAUSE = false
+new bool:SOUND = false
+new bool:FLASH = false
+new bool:BADUM = false
+new bool:KNIFE = false
 
 new pauseMenu
 
 new nobel_server_host[50]
 new nobel_server_port
 new Handle:db
-new DB_AVAILABLE=true
-
-new Float:user_frozen_time=5.0
+new db_available = true
+new mod_state[10] = MOD_STATE_STOPPED
+new bool:knife_next = false
+new Float:user_frozen_time = 5.0
 new bool:cannot_move[33]
-new bool:flash_thrown=false
+new player_money[33]
+new bool:flash_thrown = false
 new cache_sips[33]
-new bool:freezetime=true
-new bool:defused=false
-new bool:is_paused=false
-new bool:pause_enabled_before_kniferound=false
+new bool:freezetime = true
+new bool:defused = false
+new bool:exploded = false
+new bool:time_elapsed = false
+new bool:teams_switched = false
+new bool:is_paused = false
+new bool:pause_enabled_before_kniferound = false
+new round_count = 0
+new win_count_t = 0
+new win_count_ct = 0
+new map_time_half
+new Float:round_time
 
 public plugin_init()
 {
     register_plugin(PLUGIN, VERSION, AUTHOR)
     register_event("HLTV", "round_start", "a", "1=0", "2=0")
-    register_event("HLTV", "event_new_round",   "a", "1=0", "2=0")
+    register_event("HLTV", "event_new_round", "a", "1=0", "2=0")
     register_event("DeathMsg", "hook_death", "a")
     register_event("TeamInfo", "fix_sip_count", "a")
     register_event("CurWeapon", "set_user_speed", "be") 
+    register_logevent("team_win", 2, "1=Round_End");
     register_logevent("event_round_start", 2, "1=Round_Start")
     register_logevent("bomb_planted_custom", 3, "2=Planted_The_Bomb")
     register_logevent("bomb_explode_custom", 6, "3=Target_Bombed")
     register_logevent("bomb_defused", 3, "2=Defused_The_Bomb")
+    register_message(get_user_msgid("TextMsg"), "message_textmsg")
     register_forward(FM_UpdateClientData, "fw_UpdateClientData")
     RegisterHam(Ham_Spawn, "player", "player_spawned", 1);
     RegisterHam(Ham_Weapon_WeaponIdle, "weapon_flashbang", "weapon_idle_flashbang")
@@ -72,6 +87,7 @@ public plugin_init()
     register_concmd("nobel_flash", "cmd_nobel_flash", ACCESS, "Toggle the flash functionality.")
     register_concmd("nobel_knife", "cmd_nobel_knife", ACCESS, "Toggle the knife functionality.")
     register_concmd("nobel_shuffle", "cmd_nobel_shuffle", ACCESS, "Shuffle the teeeams.")
+
 //    register_concmd("nobel_fake_pausemenu", "cmd_nobel_fake_pausemenu", ACCESS, "Fakes the pause menu.")
     create_menus()
 
@@ -82,6 +98,9 @@ public plugin_init()
     register_cvar("nobel_db_user", "root")
     register_cvar("nobel_db_pass", "root")
     register_cvar("nobel_db_database", "beer_cs")
+
+    map_time_half = ((get_cvar_num("mp_timelimit") * 60) / 2)
+    round_time = (get_cvar_float("mp_roundtime") * 60.0)
 
     new configdir[128]
     get_configsdir(configdir, charsmax(configdir))
@@ -121,9 +140,30 @@ public plugin_init()
     new db_error[512]
     new ErrorCode,Handle:SqlConnection = SQL_Connect(db,ErrorCode,db_error,511)
     if(SqlConnection == Empty_Handle) {
-        DB_AVAILABLE=false
+        db_available=false
     }
 }
+
+public set_state(new_state[])
+{
+    log_amx("Changing mod state from %s to %s", mod_state, new_state)
+    copy(mod_state, charsmax(mod_state), new_state)
+}
+
+public in_state(check_state[])
+{
+    return equal(mod_state, check_state)
+}
+
+public message_textmsg(MsgId, MsgDest, MsgEntity) 
+{ 
+    static msg[50] 
+    get_msg_arg_string(2, msg, charsmax(msg))
+
+    if (equal(msg, "#Target_Saved")) {
+        time_elapsed = true
+    }
+}  
 
 public weapon_idle_flashbang(id)
 {
@@ -148,17 +188,29 @@ public event_round_start() {
 
     freezetime = false
     defused = false
+    exploded = false
+    time_elapsed = false
+
     if (FLASH)
     {
         flash_thrown = false
         client_cmd(0, "use weapon_flashbang")
     }
 
+    new params[1]
+    params[0] = 0
+    set_task(8.0, "shieldforce_timeout", 3233, params, 0, "a", 1)
+    set_task((round_time - 19.0), "roundending", 6681, params, 0, "a", 1)
+}
+
+public shieldforce_timeout() {
+    if (!ENABLED)
+        return
+
     new players[32]
     new playerCount, i
     get_players(players, playerCount, "c")
     new shield_t = 0, shield_ct = 0
-    new players_t = 0, players_ct = 0
     new CsTeams:team
     for (i=0; i<playerCount; i++)
     {
@@ -166,27 +218,54 @@ public event_round_start() {
         if (team == CS_TEAM_T) 
         {
             shield_t += cs_get_user_shield(players[i])
-            players_t++
         }
         else if (team == CS_TEAM_CT)
         {
             shield_ct += cs_get_user_shield(players[i])
-            players_ct++
         }
     }
 
     if (shield_t >= 2 || shield_ct >= 2)
     {
-        new params[1]
-        params[0] = 0
-        set_task(3.0, "shieldforce_timeout", 3233, params, 0, "a", 1)
+        nobelix_cmd("shieldforce")
     }
 }
 
-public shieldforce_timeout() {
+public roundending() {
     if (!ENABLED)
         return
-    nobelix_cmd("shieldforce")
+
+    if (!defused) {
+        nobelix_cmd("roundending")
+    }
+}
+
+public team_win(plaf) {
+    if (!ENABLED)
+        return
+
+    remove_task(6681)
+
+    new players[32]
+    new playerCount
+
+    get_players(players, playerCount, "ace", "TERRORIST")
+    new bool:t_eliminated = (playerCount == 0)
+
+    get_players(players, playerCount, "ace", "CT")
+    new bool:ct_eliminated = (playerCount == 0)
+
+    if (exploded || ct_eliminated) {
+        win_count_t++
+        win_count_ct = 0
+    } else if (defused || t_eliminated || time_elapsed) {
+        win_count_t = 0
+        win_count_ct++
+    }
+
+    if (win_count_t >= 4 || win_count_ct >= 4) {
+        nobelix_cmd("winstreak")
+    }
 }
 
 public bomb_defused() {
@@ -202,6 +281,7 @@ public bomb_planted_custom() {
         return
     new params[1]
     params[0] = 0
+    remove_task(6681)
     set_task(25.0, "bomb_planted_timeout", 7748, params, 0, "a", 1)
     nobelix_cmd("bombplanted")
 }
@@ -217,6 +297,7 @@ public bomb_planted_timeout() {
 public bomb_explode_custom(planter, defuser) {
     if (!ENABLED)
         return
+    exploded = true
     remove_task(7748)
     nobelix_cmd("bombexploded")
 }
@@ -231,16 +312,44 @@ public grenade_throw(id, gindex, weaponid) {
 }
 
 public periodic_timer() {
-    if (ENABLED) {
-        client_cmd(0, "volume 0");
-    }    
+    if (!ENABLED)
+        return
+
+    client_cmd(0, "volume 0");
+
+    if (!teams_switched && get_timeleft() < map_time_half) {
+        teams_switched = true
+
+        log_amx("Flipping teams")
+        nobelix_cmd("teamswitch")        
+
+        new players[32] 
+        new playerCount, i 
+        get_players(players, playerCount, "c") 
+
+        for (i = 0; i < playerCount; i++) {
+            new playerName[64]
+            get_user_name(players[i], playerName, charsmax(playerName))
+            new CsTeams:teamid = cs_get_user_team(players[i])
+            if (teamid == CS_TEAM_T)
+            {
+                log_amx("Putting %s on team CT", playerName)
+                cs_set_user_team(players[i], CS_TEAM_CT)
+            } 
+            else if (teamid == CS_TEAM_CT) 
+            {
+                log_amx("Putting %s on team T", playerName)
+                cs_set_user_team(players[i], CS_TEAM_T)
+            }
+        }
+    }
 }
 
 stock db_update(playerid, steamid[], name[], kills, tks, knifed, got_knifed, sips, rounds = 0)
 {
     cache_sips[playerid] += sips
 
-    if (!DB_AVAILABLE) {
+    if (!db_available) {
         log_amx("No connection to database!")
         return
     }
@@ -268,7 +377,7 @@ public db_clear_stats_handler(FailState,Handle:Query,Error[],Errcode,Data[],Data
 }
 
 public db_stats_handler(FailState,Handle:Query,Error[],Errcode,Data[],DataSize) {
-    if (!DB_AVAILABLE || !ENABLED)
+    if (!db_available || !ENABLED)
         return
     client_print(0, print_console, "====== NOBEL STATS ======")
     while (SQL_MoreResults(Query))
@@ -287,7 +396,7 @@ public db_stats_handler(FailState,Handle:Query,Error[],Errcode,Data[],DataSize) 
 }
 
 public db_full_stats_handler(FailState,Handle:Query,Error[],Errcode,Data[],DataSize) {
-    if (!DB_AVAILABLE || !ENABLED)
+    if (!db_available || !ENABLED)
         return
     client_print(0, print_console, "====== NOBEL STATS ======")
     while (SQL_MoreResults(Query))
@@ -408,7 +517,7 @@ public hook_death()
     new playerCount, i, worstplayer = false
     new killerfrags = get_user_frags(killer)
     get_players(players, playerCount, "ce", killerteam == CS_TEAM_T ? "TERRORIST" : "CT")
-    if (playerCount >= 2) {
+    if (playerCount >= 2 && round_count > 3) {
         worstplayer = true
         for (i=0; i<playerCount; i++)
         {
@@ -460,6 +569,10 @@ public hook_death()
         nobelix_cmd("knife", killername, victimname)
         client_print(0, print_chat, "%s got KNIFED!", victimname)
         pause_or_freeze_player(killer)
+    }
+    else if (grenade)
+    {
+        nobelix_cmd("grenade")
     }
     else if (headshot)
     {
@@ -530,8 +643,9 @@ public set_user_speed(id)
         new weaponId = get_user_weapon(id, clip, ammo)
         switch(weaponId) {
             case 
-                CSW_SCOUT: 
+                CSW_SCOUT: {
                     speed = 260.0
+                }
             case 
                 CSW_KNIFE,
                 CSW_GLOCK18,
@@ -547,37 +661,44 @@ public set_user_speed(id)
                 CSW_FLASHBANG,
                 CSW_DEAGLE,
                 CSW_P228, 
-                CSW_MP5NAVY:
+                CSW_MP5NAVY: {
                     speed = 250.0
+                }
             case 
-                CSW_P90: 
+                CSW_P90: {
                     speed = 245.0
+                }
             case 
                 CSW_XM1014,
                 CSW_AUG,
                 CSW_GALIL, 
-                CSW_FAMAS:
+                CSW_FAMAS: {
                     speed = 240.0
+                }
             case 
-                CSW_SG552: 
+                CSW_SG552: {
                     speed = 235.0
+                }
             case 
                  CSW_M3,
-                 CSW_M4A1: 
+                 CSW_M4A1: {
                     speed = 230.0
+                }
             case 
-                CSW_AK47: 
+                CSW_AK47: {
                     speed = 221.0
+                }
             case 
-                CSW_M249: 
+                CSW_M249: {
                     speed = 220.0
+                }
             case 
                 CSW_G3SG1,
                 CSW_SG550,
-                CSW_AWP: 
+                CSW_AWP: {
                     speed = 210.0
-            default: 
-            {
+                }
+            default: {
                 new user_name[32] 
                 get_user_name(id, user_name, charsmax(user_name))
                 log_amx("Failed to set user speed for user %s, weapon id: %d", user_name, weaponId)
@@ -615,37 +736,80 @@ stock freeze_player(killer)
     }
 }
 
+public knife_round_timeout() 
+{
+    server_cmd("amx_csay green LAAAARJF ROUND !!!!! Knife only!!")
+    server_cmd("amx_csay red LAAAARJF ROUND !!!!! Knife only!!")
+    server_cmd("amx_csay blue LAAAARJF ROUND !!!!! Knife only!!")
+    server_cmd("amx_csay red FAT DET !!!")
+    server_exec()
+}
+
 public round_start() 
 { 
-    if (ENABLED)
+    if (!ENABLED)
+        return
+
+    remove_task(6681)
+
+    if (knife_next)
+        KNIFE = true
+
+    if (KNIFE)
     {
-        if (KNIFE)
-        {
-            server_cmd("amx_csay green LAAAARJF RUNDE !!!!!")
-            server_cmd("amx_csay green LAAAARJF RUNDE !!!!!")
-            server_cmd("amx_csay green LAAAARJF RUNDE !!!!!")
-            server_exec()
-        }
+        new params[1]
+        params[0] = 0
+        set_task(1.0, "knife_round_timeout", 1691, params, 0, "a", 1)
+    }
 
-        client_print(0, print_chat, "Cheers! Everyone drinks 1!")
+    round_count++
+    client_print(0, print_chat, "Cheers! Everyone drinks 1!")
 
-        new players[32] 
-        new playerCount, i 
-        get_players(players, playerCount, "c") 
-        for (i=0; i<playerCount; i++)
+    new players[32] 
+    new playerCount, i 
+    get_players(players, playerCount, "c") 
+    for (i=0; i<playerCount; i++)
+    {
+        player_money[i] = cs_get_user_money(players[i])
+
+        new CsTeams:teamid = cs_get_user_team(players[i])
+        if (teamid == CS_TEAM_T || teamid == CS_TEAM_CT)
         {
-            new CsTeams:teamid = cs_get_user_team(players[i])
-            if (teamid == CS_TEAM_T || teamid == CS_TEAM_CT)
-            {
-                new steamid[32]
-                new name[64]
-                get_user_name(players[i], name, charsmax(name))
-                get_user_authid(players[i], steamid, charsmax(steamid))
-                db_update(players[i], steamid, name, 0, 0, 0, 0, 1, 1)
-            }
+            new steamid[32]
+            new name[64]
+            get_user_name(players[i], name, charsmax(name))
+            get_user_authid(players[i], steamid, charsmax(steamid))
+            db_update(players[i], steamid, name, 0, 0, 0, 0, 1, 1)
         }
+    }
+
+    if (KNIFE) {
+        nobelix_cmd("leif")
+    } else {
         nobelix_cmd("round")
     }
+
+    new params[1]
+    params[0] = 0
+    set_task(8.0, "money_timeout", 5591, params, 0, "a", 1)
+}
+
+public money_timeout()
+{
+    new bool:any = false
+    new players[32] 
+    new playerCount, i 
+    get_players(players, playerCount, "c") 
+    for (i=0; i<playerCount; i++)
+    {
+        new current_money = cs_get_user_money(players[i])
+        if ((player_money[i] - current_money) > 5700) {
+            any = true
+        }
+    }
+
+    if (any)
+        nobelix_cmd("rich")
 }
 
 public cmd_nobel_shuffle()
@@ -725,25 +889,29 @@ public do_the_shuffle(elm1, elm2)
 
 public cmd_nobel_knife(id, level, cid)
 {
-    if (ENABLED)
+    if (!ENABLED)
+        return PLUGIN_HANDLED;
+ 
+    if (!KNIFE && !knife_next)
     {
-        if (!KNIFE)
-        {
-            pause_enabled_before_kniferound = PAUSE
+        pause_enabled_before_kniferound = PAUSE
 
-            server_cmd("amx_csay green LAAAARJF RUNDE !!!!!")
-            server_cmd("amx_csay green LAAAARJF RUNDE !!!!!")
-            server_cmd("amx_csay green LAAAARJF RUNDE !!!!!")
-            server_exec()
-        }
-        else
-        {
-            PAUSE = pause_enabled_before_kniferound
-        }
-
-        KNIFE = !KNIFE
-        client_print(0, print_chat, "Nobel LAAAJF ROUND %s!", (KNIFE ? "enabled" : "disabled"))
+        server_cmd("amx_csay green NEXT ROUND IS LAAAARJF ROUND !!!!! Knife only!!")
+        server_cmd("amx_csay red NEXT ROUND IS LAAAARJF ROUND !!!!! Knife only!!")
+        server_cmd("amx_csay blue NEXT ROUND IS LAAAARJF ROUND !!!!! Knife only!!")
+        server_cmd("amx_csay red FAT DET !!!")
+        server_exec()
+        client_print(0, print_chat, "Nobel LAAAJF ROUND enabled!")
+        knife_next = true
     }
+    else
+    {
+        PAUSE = pause_enabled_before_kniferound
+        KNIFE = false
+        knife_next = false
+        client_print(0, print_chat, "Nobel LAAAJF ROUND disabled!")
+    }
+
     return PLUGIN_HANDLED;
 }
 
@@ -847,8 +1015,11 @@ public cmd_nobel(id, level, cid)
 
 public cmd_nobel_start(id, level, cid)
 {
-    if (!cmd_access(id, level, cid, 0))
+    if (!cmd_access(id, level, cid, 0) || !in_state(MOD_STATE_STOPPED))
         return PLUGIN_HANDLED;
+
+    round_count = 0
+    set_state(MOD_STATE_STARTING)
 
     server_cmd("exec mr15.cfg")
 
@@ -867,24 +1038,27 @@ public cmd_nobel_serverstart(id, level, cid)
     ENABLED = true
     SOUND = true
     
-    if (DB_AVAILABLE) {
+    if (db_available) {
         cmd_nobel_clear_stats(0, 0, 0)
         PAUSE = true
     }
     
     round_start()
+    set_state(MOD_STATE_STARTED)
+
     return PLUGIN_HANDLED;
 }
 
 public cmd_nobel_stop(id, level, cid)
 {
-    if (!cmd_access(id, level, cid, 0))
+    if (!cmd_access(id, level, cid, 0) || !in_state(MOD_STATE_STARTED))
         return PLUGIN_HANDLED;
 
     ENABLED = false
     remove_task(1000)
     server_cmd("exec stop.cfg")
     client_print(0, print_console, "Nobel Beer CS disabled!")	
+    set_state(MOD_STATE_STOPPED)
     return PLUGIN_HANDLED;
 }
 
@@ -936,7 +1110,7 @@ public cmd_nobel_clear_stats(id, level, cid)
     if (!cmd_access(id, level, cid, 0))
         return PLUGIN_HANDLED;
 
-    client_print(0, print_console, "DB AVAILABLE? %s", (DB_AVAILABLE ? "true" : "false"))
+    client_print(0, print_console, "DB AVAILABLE? %s", (db_available ? "true" : "false"))
     client_print(0, print_console, "Clearing stats.")
 
     new Players[32] 
@@ -947,7 +1121,7 @@ public cmd_nobel_clear_stats(id, level, cid)
         cache_sips[Players[i]] = 0
     }
 
-    if (DB_AVAILABLE)
+    if (db_available)
     {
         SQL_ThreadQuery(db, "db_clear_stats_handler", "TRUNCATE TABLE stats")
     }    
@@ -962,7 +1136,7 @@ public cmd_nobel_stats(id, level, cid)
     if (!cmd_access(id, level, cid, 0))
         return PLUGIN_HANDLED;
 
-    if (!DB_AVAILABLE)
+    if (!db_available)
         return PLUGIN_HANDLED;
 
     SQL_ThreadQuery(db, "db_stats_handler", "SELECT steamid,name,sips FROM stats ORDER BY sips DESC;")
