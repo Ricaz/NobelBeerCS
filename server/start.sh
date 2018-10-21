@@ -14,16 +14,25 @@ export DISPLAY=:0
 
 trap "diediedie" EXIT
 
+# Pulseaudio kører som systemservice, så det burde ikke længere være nødvendigt at starte den for brugeren her
+# pulseaudio --start
+
 # Fix HDMI sound problem
 aplay -c2 -r48000 -fS16_LE < /dev/zero &
 APLAY_PID=$!
 
 # Start the built-in PHP webserver in background
-php -S 0.0.0.0:1234 &
+php -S 0.0.0.0:1234 -t /home/oelcs &
 PHP_PID=$!
 
+#Start 
+xset -dpms
+xset s off
+openbox-session &
+
 # Start chromium and load stats page
-chromium --disable-infobars --disable-session-crashed-bubble -kiosk http://localhost:1234/stats.php &
+chromium --disable-infobars --autoplay-policy=no-user-gesture-required --disable-session-crashed-bubble --kiosk --app=http://localhost:1234/stats.php &
+#chromium --disable-session-crashed-bubble --app=http://localhost:1234/stats.php &
 CHROMIUM_PID=$!
 
 # Hide the mouse cursor
@@ -36,5 +45,5 @@ echo "CHROMIUM_PID: $CHROMIUM_PID"
 echo "CURSOR_PID: $CURSOR_PID"
 
 # Start the real deal!
+cd /home/oelcs/
 php nobel_beer_cs.php
-
