@@ -12,13 +12,22 @@
 #include <sqlx>
 #include <cellarray>
 
+#pragma ctrlchar '\'
 #define PLUGIN "Nobel Beer CS"
 #define AUTHOR "Nobel Kollegiet"
-#define VERSION "1.7"
+#define VERSION "1.8"
 #define ACCESS ADMIN_SLAY
 #define MOD_STATE_STOPPED "STOPPED"
 #define MOD_STATE_STARTING "STARTING"
 #define MOD_STATE_STARTED "STARTED"
+#define MAP_TYPE_DE "de"
+#define MAP_TYPE_CS "cs"
+#define MAP_TYPE_FY "fy"
+#define MAP_TYPE_AS "as"
+#define MAP_TYPE_AIM "aim"
+#define MAP_TYPE_AWP "awp"
+
+new bool:USE_JSON = false
 
 new bool:ENABLED = false
 new bool:PAUSE = false
@@ -35,6 +44,7 @@ new Handle:db
 new db_available = true
 new mod_state[10] = MOD_STATE_STOPPED
 new bool:knife_next = false
+new bool:knife_last = false
 new Float:user_frozen_time = 5.0
 new bool:cannot_move[33]
 new player_money[33]
@@ -52,6 +62,9 @@ new win_count_t = 0
 new win_count_ct = 0
 new map_time_half
 new Float:round_time
+new map_type[4] = MAP_TYPE_DE
+new alone_round = false
+new first_hostage_touched = false
 
 public plugin_init()
 {
@@ -61,21 +74,27 @@ public plugin_init()
     register_event("DeathMsg", "hook_death", "a")
     register_event("TeamInfo", "fix_sip_count", "a")
     register_event("CurWeapon", "set_user_speed", "be") 
+    register_event("TextMsg", "hostages_rescued", "a", "2&#All_Hostages_R") 
     register_logevent("team_win", 2, "1=Round_End");
     register_logevent("event_round_start", 2, "1=Round_Start")
     register_logevent("bomb_planted_custom", 3, "2=Planted_The_Bomb")
     register_logevent("bomb_explode_custom", 6, "3=Target_Bombed")
     register_logevent("bomb_defused", 3, "2=Defused_The_Bomb")
+    register_logevent("hostage_touched", 3, "2=Touched_A_Hostage")
     register_message(get_user_msgid("TextMsg"), "message_textmsg")
     register_forward(FM_UpdateClientData, "fw_UpdateClientData")
     RegisterHam(Ham_Spawn, "player", "player_spawned", 1);
     RegisterHam(Ham_Weapon_WeaponIdle, "weapon_flashbang", "weapon_idle_flashbang")
+    RegisterHam(Ham_TraceAttack, "hostage_entity", "hostage_traceattack", false) 
+    RegisterHam(Ham_TakeDamage, "hostage_entity", "hostage_damage", false)
 
-    register_concmd("nobel_pause", "cmd_nobel_pause", ACCESS, "Pause the plugin.")
+    register_concmd("nobel_pause", "cmd_nobel_pause", ACCESS, "Disable/enable pause.")
     register_concmd("nobel_sound", "cmd_nobel_sound", ACCESS, "Enable/disable sound.")
     register_concmd("nobel_badum", "cmd_nobel_badum", ACCESS, "Enable/disable badum.")
     register_concmd("nobel_theme", "cmd_nobel_theme", ACCESS, "Change sound theme.")
     register_concmd("badum", "cmd_badum", ACCESS, "Plays badum!")
+    register_concmd("shutup", "cmd_shutup", ACCESS, "Plays shutup!")
+    register_concmd("ready", "cmd_ready", ACCESS, "Plays reeady sound!")
     register_concmd("nobel", "cmd_nobel", ACCESS, "View current settings.")
     register_concmd("nobelstats", "cmd_nobel_stats", ACCESS, "View simple stats.")
     register_concmd("nobel_stats", "cmd_nobel_stats", ACCESS, "View simple stats.")
@@ -86,10 +105,30 @@ public plugin_init()
     register_concmd("nobel_stop", "cmd_nobel_stop", ACCESS, "Stop the plugin.")
     register_concmd("nobel_flash", "cmd_nobel_flash", ACCESS, "Toggle the flash functionality.")
     register_concmd("nobel_knife", "cmd_nobel_knife", ACCESS, "Toggle the knife functionality.")
-    register_concmd("nobel_shuffle", "cmd_nobel_shuffle", ACCESS, "Shuffle the teeeams.")
+    register_concmd("nobel_knife_now", "cmd_nobel_knife_now", ACCESS, "Toggle the knife functionality NOW.")
 
 //    register_concmd("nobel_fake_pausemenu", "cmd_nobel_fake_pausemenu", ACCESS, "Fakes the pause menu.")
+//    register_concmd("nobel_fake_teamswitch", "switch_teams", ACCESS, "Force team switch")
     create_menus()
+
+    // Find map type
+    new mapName[64]
+    get_mapname(mapName, charsmax(mapName))
+    if (equali(mapName, "de_", 3)) {
+        map_type = MAP_TYPE_DE
+    } else if (equali(mapName, "cs_", 3)) {
+        map_type = MAP_TYPE_CS
+    } else if (equali(mapName, "fy_", 3)) {
+        map_type = MAP_TYPE_FY
+    } else if (equali(mapName, "as_", 3)) {
+        map_type = MAP_TYPE_AS
+    } else if (equali(mapName, "aim_", 4)) {
+        map_type = MAP_TYPE_AIM
+    } else if (equali(mapName, "awp_", 4)) {
+        map_type = MAP_TYPE_AWP
+    }
+
+    log_amx("Map type: %s", map_type)
 
     // Read configuration values from config/nobel.cfg
     register_cvar("nobel_server_host", "localhost")
@@ -100,7 +139,6 @@ public plugin_init()
     register_cvar("nobel_db_database", "beer_cs")
 
     map_time_half = ((get_cvar_num("mp_timelimit") * 60) / 2)
-    round_time = (get_cvar_float("mp_roundtime") * 60.0)
 
     new configdir[128]
     get_configsdir(configdir, charsmax(configdir))
@@ -135,13 +173,64 @@ public plugin_init()
 
     log_amx("Nobel Beer CS plugin loaded!")
 
-    nobelix_cmd_always("stats")
+    send_event_always("mapchange", mapName)
 
     new db_error[512]
     new ErrorCode,Handle:SqlConnection = SQL_Connect(db,ErrorCode,db_error,511)
     if(SqlConnection == Empty_Handle) {
         db_available=false
     }
+}
+
+public client_command()
+{
+    new cmd[100]
+    read_argv(0, cmd, 100)
+
+    if (equal(cmd, "pauseAck")) {
+        is_paused = !is_paused
+        log_amx("Changed pause state to: %s", (is_paused ? "true" : "false"))
+
+        if (!PAUSE)
+            return PLUGIN_CONTINUE
+
+        if (is_paused) {
+            show_pause_menu()
+        } else {
+            hide_pause_menu()
+        }
+    }
+
+    return PLUGIN_CONTINUE
+}
+
+public show_pause_menu()
+{
+    new players[32] 
+    new playerCount, i 
+    get_players(players, playerCount, "c") 
+    for (i=0; i<playerCount; i++)
+    {
+        if (is_user_admin(players[i]))
+            menu_display(players[i], pauseMenu, 0)
+    }
+}
+
+public hide_pause_menu()
+{
+    new players[32] 
+    new playerCount, i 
+    get_players(players, playerCount, "c") 
+    for (i=0; i<playerCount; i++)
+    {
+        if (is_user_admin(players[i]))
+            show_menu(players[i], 0, " ", 0)
+    }
+}
+
+public is_map_type(type[])
+{
+    return equal(map_type, type)
 }
 
 public set_state(new_state[])
@@ -170,10 +259,36 @@ public weapon_idle_flashbang(id)
     if (FLASH && !flash_thrown)
     {
         flash_thrown = true
-        client_cmd(0, "+attack")
-        client_cmd(0, "wait")
+//        client_cmd(0, "+attack")
+//        client_cmd(0, "wait")
         client_cmd(0, "-attack")
     }
+}
+public hostage_touched() {
+    if (!ENABLED)
+        return
+
+    if (first_hostage_touched)
+        return
+
+    log_amx("touched hostage")
+    first_hostage_touched = true
+    send_event("hostagefollow")
+}
+
+public hostage_traceattack(ent, attacker) {
+    return ENABLED ? HAM_SUPERCEDE : HAM_IGNORED
+}
+
+public hostage_damage(victim, inflictor, attacker) {
+    return ENABLED ? HAM_SUPERCEDE : HAM_IGNORED
+}
+
+public hostages_rescued() {
+    if (!ENABLED)
+        return
+
+    send_event("hostagesrescued")
 }
 
 public event_new_round() {
@@ -200,7 +315,11 @@ public event_round_start() {
     new params[1]
     params[0] = 0
     set_task(8.0, "shieldforce_timeout", 3233, params, 0, "a", 1)
-    set_task((round_time - 19.0), "roundending", 6681, params, 0, "a", 1)
+
+    new Float:roundending_timeout = (round_time - 19.0)
+    log_amx("roundending timeout set. Value=%f", roundending_timeout)
+
+    set_task(roundending_timeout, "roundending", 6681, params, 0, "a", 1)
 }
 
 public shieldforce_timeout() {
@@ -227,7 +346,7 @@ public shieldforce_timeout() {
 
     if (shield_t >= 2 || shield_ct >= 2)
     {
-        nobelix_cmd("shieldforce")
+        send_event("shieldforce")
     }
 }
 
@@ -236,7 +355,7 @@ public roundending() {
         return
 
     if (!defused) {
-        nobelix_cmd("roundending")
+        send_event("roundending")
     }
 }
 
@@ -264,7 +383,7 @@ public team_win(plaf) {
     }
 
     if (win_count_t >= 4 || win_count_ct >= 4) {
-        nobelix_cmd("winstreak")
+        send_event("winstreak")
     }
 }
 
@@ -273,7 +392,7 @@ public bomb_defused() {
         return
     remove_task(7748)
     defused = true
-    nobelix_cmd("bombdefused")
+    send_event("bombdefused")
 }
 
 public bomb_planted_custom() {
@@ -283,14 +402,14 @@ public bomb_planted_custom() {
     params[0] = 0
     remove_task(6681)
     set_task(25.0, "bomb_planted_timeout", 7748, params, 0, "a", 1)
-    nobelix_cmd("bombplanted")
+    send_event("bombplanted")
 }
 
 public bomb_planted_timeout() {
     if (!ENABLED)
         return
     if (!defused) {
-        nobelix_cmd("hurryup")
+        send_event("hurryup")
     }
 }
 
@@ -299,7 +418,7 @@ public bomb_explode_custom(planter, defuser) {
         return
     exploded = true
     remove_task(7748)
-    nobelix_cmd("bombexploded")
+    send_event("bombexploded")
 }
 
 public grenade_throw(id, gindex, weaponid) {
@@ -318,30 +437,46 @@ public periodic_timer() {
     client_cmd(0, "volume 0");
 
     if (!teams_switched && get_timeleft() < map_time_half) {
-        teams_switched = true
+        switch_teams()
+    }
+}
 
-        log_amx("Flipping teams")
-        nobelix_cmd("teamswitch")        
+public switch_teams() {
+    if (!ENABLED)
+        return
 
-        new players[32] 
-        new playerCount, i 
-        get_players(players, playerCount, "c") 
+    teams_switched = true
 
-        for (i = 0; i < playerCount; i++) {
-            new playerName[64]
-            get_user_name(players[i], playerName, charsmax(playerName))
-            new CsTeams:teamid = cs_get_user_team(players[i])
-            if (teamid == CS_TEAM_T)
-            {
-                log_amx("Putting %s on team CT", playerName)
-                cs_set_user_team(players[i], CS_TEAM_CT)
-            } 
-            else if (teamid == CS_TEAM_CT) 
-            {
-                log_amx("Putting %s on team T", playerName)
-                cs_set_user_team(players[i], CS_TEAM_T)
-            }
+    log_amx("Flipping teams")
+    send_event("teamswitch")        
+
+    new players[32] 
+    new playerCount, i 
+    new firstCTplayer = -1
+    get_players(players, playerCount, "c") 
+
+    for (i = 0; i < playerCount; i++) {
+        new playerName[64]
+        cs_set_user_vip(players[i], 0, 0 ,0)
+        get_user_name(players[i], playerName, charsmax(playerName))
+        new CsTeams:teamid = cs_get_user_team(players[i])
+        if (teamid == CS_TEAM_T)
+        {
+            log_amx("Putting %s on team CT", playerName)
+            cs_set_user_team(players[i], CS_TEAM_CT)
+            firstCTplayer = players[i]
+        } 
+        else if (teamid == CS_TEAM_CT) 
+        {
+            log_amx("Putting %s on team T", playerName)
+            cs_set_user_team(players[i], CS_TEAM_T)
         }
+        if (user_has_weapon(players[i], CSW_C4)) {
+            engclient_cmd(players[i], "drop", "weapon_c4")
+        }
+    }
+    if (is_map_type(MAP_TYPE_AS) && firstCTplayer >= 0) {
+        cs_set_user_vip(firstCTplayer, 1, 1, 1)
     }
 }
 
@@ -430,6 +565,7 @@ public create_menus()
     {
        menu_addblank2(pauseMenu)
     }
+//    menu_additem(pauseMenu, "Close menu", "1", 0)
     menu_additem(pauseMenu, "Unpause", "1", 0)
     menu_setprop(pauseMenu, MPROP_PERPAGE, 0)
 }
@@ -438,22 +574,12 @@ public pause_menu_handler(id, menu, item)
 {
     if (item == 9)
     {
-        new Players[32] 
-        new playerCount, i 
-        get_players(Players, playerCount, "c") 
-        for (i=0; i<playerCount; i++)
-        {
-            if (is_user_admin(Players[i]))
-            {
-                show_menu(Players[i], 0, " ", 0)
-            }
-        }
-
-        nobelix_cmd("unpause")
-
-        client_print(0, print_chat, "Go go go!")
         unpause_game()
     }
+//    else if (item == 8)
+//    {
+//        show_menu(id, 0, " ", 0)
+//    }
     return PLUGIN_HANDLED;
 }
 
@@ -461,7 +587,7 @@ public pause_game()
 {
     if (!is_paused)
     {
-        is_paused = true
+        log_amx("Pausing game")
         server_cmd("amx_pause")
         server_exec()
     }
@@ -471,7 +597,9 @@ public unpause_game()
 {
     if (is_paused)
     {
-        is_paused = false
+        client_print(0, print_chat, "Go go go!")
+        send_event("unpause")
+        log_amx("Unpausing game")
         server_cmd("amx_pause")
         server_exec()
     }
@@ -479,10 +607,10 @@ public unpause_game()
 
 public hook_death()
 {
-    fix_sip_count()
-
     if (!ENABLED)
         return
+
+    fix_sip_count()
 
     new killer = read_data(1)
     new victim = read_data(2)
@@ -492,51 +620,55 @@ public hook_death()
     new killersteamid[64]
     new victimsteamid[64]
     new weapon[32]
+    new playAlone = false
     read_data(4, weapon, 31)
     new knifed = !strcmp(weapon, "knife")
     new grenade = !strcmp(weapon, "grenade")
+    new suicide = killer == victim || killer == 0
 
-    if (killer == 0 || victim == 0)
+    if (victim == 0)
         return
 
-    new CsTeams:killerteam = cs_get_user_team(killer)
     new CsTeams:victimteam = cs_get_user_team(victim)
-
-    new team_kill = killer != victim && killerteam == victimteam
-    new suicide = killer == victim
-    get_user_name(killer, killername, 63)
     get_user_name(victim, victimname, 63)
-    get_user_authid(killer, killersteamid, charsmax(killersteamid))
     get_user_authid(victim, victimsteamid, charsmax(victimsteamid))
 
-    client_print(0, print_chat, "%s drinks 2!", killername)
-    client_print(0, print_chat, "%s drinks 1!", victimname)
-   
-    // Find out if the user is the worst on the team
+    new CsTeams:killerteam
+    new team_kill = false
+    new worstplayer = false
     new players[32]
-    new playerCount, i, worstplayer = false
-    new killerfrags = get_user_frags(killer)
-    get_players(players, playerCount, "ce", killerteam == CS_TEAM_T ? "TERRORIST" : "CT")
-    if (playerCount >= 2 && round_count > 3) {
-        worstplayer = true
-        for (i=0; i<playerCount; i++)
-        {
-            if (players[i] != killer && killerfrags > get_user_frags(players[i]))
+    new playerCount, i
+
+    if (killer != 0) {
+        killerteam = cs_get_user_team(killer)
+        get_user_name(killer, killername, 63)
+        team_kill = killer != victim && killerteam == victimteam
+        get_user_authid(killer, killersteamid, charsmax(killersteamid))
+   
+        // Find out if the user is the worst on the team
+        new killerfrags = get_user_frags(killer)
+        get_players(players, playerCount, "ce", killerteam == CS_TEAM_T ? "TERRORIST" : "CT")
+        if (playerCount >= 2 && round_count > 3) {
+            worstplayer = true
+            for (i=0; i<playerCount; i++)
             {
-                worstplayer = false
+                if (players[i] != killer && killerfrags > get_user_frags(players[i]))
+                {
+                    worstplayer = false
+                }
             }
         }
     }
 
     // UPDATE STATS
-    if (team_kill)
+    if (suicide)
     {
-        db_update(killer, killersteamid, killername, 0, 1, 0, 0, 5)
-        db_update(victim, victimsteamid, victimname, 1, 0, 0, 0, 1)
+        db_update(victim, victimsteamid, victimname, 0, 0, 0, 0, 10)
     }
-    else if (suicide)
+    else if (team_kill)
     {
-        db_update(killer, killersteamid, killername, 0, 0, 0, 0, 1)
+        db_update(killer, killersteamid, killername, 0, 1, 0, 0, 10)
+        db_update(victim, victimsteamid, victimname, 1, 0, 0, 0, 1)
     }
     else
     {
@@ -544,51 +676,79 @@ public hook_death()
         db_update(victim, victimsteamid, victimname, 0, 0, 0, 0, 1)
     }
 
-    if (knifed)
+    if (knifed && !KNIFE)
     {
         db_update(killer, killersteamid, killername, 0, 0, 1, 0, 0)
         db_update(victim, victimsteamid, victimname, 0, 0, 0, 1, 0)
     }
 
     // EVENT CONTROL
-    if (team_kill)
+    if (suicide)
     {
-        nobelix_cmd("tk", killername, victimname)
+        send_event("suicide")
+        if (PAUSE)
+        {
+            pause_game()
+        }
+    }
+    else if (team_kill)
+    {
+        send_event("tk", killername, victimname)
         client_print(0, print_chat, "Bottoms up, %s!", killername)
         pause_or_freeze_player(killer)
     }
     else if (KNIFE && !knifed && !grenade)
     {
         // In knife rounds we do NOT accept to be killed by a gun!
-        nobelix_cmd("kniferound", killername)
+        send_event("kniferound", killername)
         client_print(0, print_chat, "Bottoms up, %s!", killername)
         pause_or_freeze_player(killer)
     }
     else if (knifed && !KNIFE)
     {
-        nobelix_cmd("knife", killername, victimname)
+        send_event("knife", killername, victimname)
         client_print(0, print_chat, "%s got KNIFED!", victimname)
         pause_or_freeze_player(killer)
     }
     else if (grenade)
     {
-        nobelix_cmd("grenade")
+        send_event("grenade")
+        freeze_player(killer)
     }
     else if (headshot)
     {
-        nobelix_cmd(worstplayer ? "worstplayer" : "headshot")
+        playAlone = true
+        send_event(worstplayer ? "worstplayer" : "headshot")
         freeze_player(killer)
-    }
-    else if (suicide)
-    {
-        nobelix_cmd(worstplayer ? "worstplayer" : "kill")
-        // Do not freeze user, as the last user could get unfreezed
-        // in a new round while round start freezetime is activated
     }
     else
     {
-        nobelix_cmd(worstplayer ? "worstplayer" : "kill")
+        playAlone = true
+        send_event(worstplayer ? "worstplayer" : "kill")
         freeze_player(killer)
+    }
+
+    if (playAlone) {
+        get_players(players, playerCount, "c")
+        if (playerCount >= 3) {
+            new players_t = 0, players_ct = 0
+            for (i=0; i<playerCount; i++)
+            {
+                if (is_user_alive(players[i])) {
+                    new CsTeams:playerteam = cs_get_user_team(players[i])
+                    if (playerteam == CS_TEAM_T) {
+                        players_t++;
+                    } else if (playerteam == CS_TEAM_CT) {
+                        players_ct++;
+                    }
+                }
+            }
+
+            if (!alone_round && (players_t == 1 || players_ct == 1)) {
+                alone_round = true
+                send_event("alone")
+            }
+        }
     }
 }
 
@@ -597,20 +757,12 @@ public pause_or_freeze_player(killer)
     if (PAUSE)
     {
         pause_game()
-        new players[32] 
-        new playerCount, i 
-        get_players(players, playerCount, "c") 
-        for (i=0; i<playerCount; i++)
-        {
-            if (is_user_admin(players[i]))
-            {
-                menu_display(players[i], pauseMenu, 0)
-            }
-        }
     }
     else
     {
         freeze_player(killer)
+        // Ensure that the server does not show the pause images
+        send_event("unpause")
     }
 }
 
@@ -754,6 +906,9 @@ public round_start()
 
     if (knife_next)
         KNIFE = true
+    
+    if (knife_last)
+        disable_knife_round()
 
     if (KNIFE)
     {
@@ -763,7 +918,8 @@ public round_start()
     }
 
     round_count++
-    client_print(0, print_chat, "Cheers! Everyone drinks 1!")
+    alone_round = false
+    first_hostage_touched = false
 
     new players[32] 
     new playerCount, i 
@@ -780,13 +936,14 @@ public round_start()
             get_user_name(players[i], name, charsmax(name))
             get_user_authid(players[i], steamid, charsmax(steamid))
             db_update(players[i], steamid, name, 0, 0, 0, 0, 1, 1)
+            cannot_move[players[i]] = false
         }
     }
 
     if (KNIFE) {
-        nobelix_cmd("leif")
+        send_event("leif")
     } else {
-        nobelix_cmd("round")
+        send_event(round_count == 1 ? "firstround" : "round")
     }
 
     new params[1]
@@ -803,89 +960,61 @@ public money_timeout()
     for (i=0; i<playerCount; i++)
     {
         new current_money = cs_get_user_money(players[i])
-        if ((player_money[i] - current_money) > 5700) {
+        if ((player_money[i] - current_money) >= 5500) {
             any = true
         }
     }
 
     if (any)
-        nobelix_cmd("rich")
+        send_event("rich")
 }
 
-public cmd_nobel_shuffle()
+public shuffle_players()
 {
     new players[32] 
     new playerCount 
-    get_players(players, playerCount, "c") 
+    get_players(players, playerCount, "ach") 
     
     SortCustom1D(players, playerCount, "do_the_shuffle")
 
-    log_amx("---- SORT RESULT ----")
     for (new i=0; i < playerCount; i++)
     {
         new playerName[64]
         get_user_name(players[i], playerName, charsmax(playerName))
-        log_amx("Player: %s", playerName)
+        if (i%2 == 1) {
+            log_amx("Putting %s on team T", playerName)
+            cs_set_user_team(players[i], CS_TEAM_T)
+        } else {
+            log_amx("Putting %s on team CT", playerName)
+            cs_set_user_team(players[i], CS_TEAM_CT)
+        }
     }
     return PLUGIN_HANDLED
 }
 
 public do_the_shuffle(elm1, elm2)
 {
-    return random_num(-1, 1)
+    return random_num(0, 1) == 1 ? 1 : -1;
 }
 
+public disable_knife_round()
+{
+    PAUSE = pause_enabled_before_kniferound
+    KNIFE = false
+    knife_next = false
+    knife_last = false
+    client_print(0, print_chat, "Nobel LAAAJF ROUND disabled!")
 
-//new Array:playerList = ArrayCreate(10)
-//
-//public shuffle_players(i, players, min, max) {
-//	if (min == max)
-//		return
-//	new rand = random_num(min, max)
-//	log_amx("Shuffling.. rand=%d, min=%d, max=%d", rand, min, max)
-//    ArrayPushInt(playerList, players[rand])
-//	if (min < rand)
-//		shuffle_players(++i, players, min, rand)
-//	else
-//		shuffle_players(++i, players, rand, max)
-//}
-//
-//
-//public cmd_nobel_shuffle()
-//{
-//	new num, players[32]
-//	get_players(players,num)
-//
-//	shuffle_player(0, players, 0, num)
-//    log_amx("--- RESULT ---")
-//    for (new i=0, i < num; i++)
-//    {
-//        new player[64]
-//        new playerId = ArrayGetCell(playerList, i)
-//        get_user_name(playerId, player, 63)
-//        log_amx("Player: %s", player)
-//    }
-//
-//    return PLUGIN_HANDLED
-//
-////    new Players[32] 
-////    new playerCount
-////    get_players(Players, playerCount, "c") 
-////    new Array:shuffledPlayers = ArrayCreate(playerCount)
-////    for (new i = 0; i < playerCount; i++)
-////    {
-////        ArrayPushCell(shuffledPlayers, Players[random_num(i++, playerCount - 1)]);
-////    }
-////
-////    log_amx("-----------------")
-////
-////    for (new j = 0; j < playerCount; j++)
-////    {
-////        new playerName[50]
-////        get_user_name( ArrayGetCell(shuffledPlayers, j), playerName, charsmax(playerName) );
-////        log_amx("Player: %s", playerName);
-////    }
-//}
+    return PLUGIN_HANDLED;
+}
+
+public cmd_nobel_knife_now(id, level, cid)
+{
+    if (ENABLED)
+        disable_knife_round()
+
+    return PLUGIN_HANDLED;
+}
 
 public cmd_nobel_knife(id, level, cid)
 {
@@ -906,10 +1035,12 @@ public cmd_nobel_knife(id, level, cid)
     }
     else
     {
-        PAUSE = pause_enabled_before_kniferound
-        KNIFE = false
-        knife_next = false
-        client_print(0, print_chat, "Nobel LAAAJF ROUND disabled!")
+        server_cmd("amx_csay green LAST LAAAARJF ROUND !!!!!")
+        server_cmd("amx_csay red LAST LAAAARJF ROUND !!!!!")
+        server_cmd("amx_csay blue LAST LAAAARJF ROUND !!!!!")
+        server_cmd("amx_csay red FAT DET !!!")
+        server_exec()
+        knife_last = true
     }
 
     return PLUGIN_HANDLED;
@@ -951,7 +1082,7 @@ public cmd_nobel_theme(id, level, cid)
     if (!equali(arg, ""))
     {
         client_print(0, print_chat, "Nobel sound theme changed to: %s!", arg)
-        nobelix_cmd("theme", arg)
+        send_event("theme", arg)
     }
     return PLUGIN_HANDLED
 }
@@ -962,7 +1093,26 @@ public cmd_badum(id, level, cid)
         return PLUGIN_HANDLED;
 
     if (BADUM)
-        nobelix_cmd("badum")    
+        send_event("badum")    
+    return PLUGIN_HANDLED;
+}
+
+public cmd_ready(id, level, cid)
+{
+    if (!cmd_access(id, level, cid, 0))
+        return PLUGIN_HANDLED;
+
+    if (!ENABLED)
+        send_event_always("ready")
+    return PLUGIN_HANDLED;
+}
+
+public cmd_shutup(id, level, cid)
+{
+    if (!cmd_access(id, level, cid, 0))
+        return PLUGIN_HANDLED;
+
+    send_event_always("shutup")
     return PLUGIN_HANDLED;
 }
 
@@ -975,24 +1125,29 @@ public player_spawned(id)
     }
 }
 
-stock nobelix_cmd(cmd[], name[] = "", name2[] = "")
+stock send_event(cmd[], name[] = "", name2[] = "")
 {
     if (ENABLED && SOUND) {
-        nobelix_cmd_always(cmd, name, name2)
+        send_event_always(cmd, name, name2)
     }
 }
 
-stock nobelix_cmd_always(cmd[], name[] = "", name2[] = "")
+stock send_event_always(cmd[], killer[] = "", victim[] = "")
 {
     new sock
     new error
     sock = socket_open(nobel_server_host, nobel_server_port, SOCKET_TCP, error)
     if (!error)
     {
-        new buf[64]
-        format(buf, 64, "%s|€@!|%s|€@!|%s", cmd, name, name2)
+        new buf[128]
+        if (USE_JSON) {
+            format(buf, 128, "{\"event\":\"%s\",\"killer\":\"%s\",\"victim\":\"%s\"}", cmd, killer, victim)
+        } else {
+            format(buf, 128, "%s|€@!|%s|€@!|%s", cmd, killer, victim)
+        }
         new len = strlen(buf)
     
+        log_amx("Sending event: %s (%s %s)", cmd, killer, victim)
         socket_send(sock, buf, len)
         socket_close(sock)
     }
@@ -1021,8 +1176,18 @@ public cmd_nobel_start(id, level, cid)
     round_count = 0
     set_state(MOD_STATE_STARTING)
 
-    server_cmd("exec mr15.cfg")
+    // Load map type specific config
+    new map_type_cfg[22]
+    format(map_type_cfg, 22, "exec nobel_map_%s.cfg", map_type)
+    log_amx("Executing: %s", map_type_cfg)
+    server_cmd(map_type_cfg)
+    server_exec();
+    round_time = (get_cvar_float("mp_roundtime") * 60.0)
+    log_amx("Read mp_roundtime value=%f", round_time)
 
+    shuffle_players()
+    server_cmd("exec mr15.cfg")
+    
     new params[1]
     params[0] = 0
 
@@ -1033,7 +1198,10 @@ public cmd_nobel_start(id, level, cid)
 public cmd_nobel_serverstart(id, level, cid)
 {
     if (!cmd_access(id, level, cid, 0))
-        return PLUGIN_HANDLED;
+        return PLUGIN_HANDLED
+
+    if (ENABLED)
+        return PLUGIN_HANDLED
 
     ENABLED = true
     SOUND = true
@@ -1042,11 +1210,11 @@ public cmd_nobel_serverstart(id, level, cid)
         cmd_nobel_clear_stats(0, 0, 0)
         PAUSE = true
     }
-    
+
     round_start()
     set_state(MOD_STATE_STARTED)
 
-    return PLUGIN_HANDLED;
+    return PLUGIN_HANDLED
 }
 
 public cmd_nobel_stop(id, level, cid)
@@ -1126,7 +1294,7 @@ public cmd_nobel_clear_stats(id, level, cid)
         SQL_ThreadQuery(db, "db_clear_stats_handler", "TRUNCATE TABLE stats")
     }    
 
-    nobelix_cmd("clearstats")    
+    send_event("clearstats")    
 
     return PLUGIN_HANDLED;
 } 
