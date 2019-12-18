@@ -256,52 +256,6 @@ public retrieve_data_string(const key[], const out[], size)
     return 0
 }
 
-public client_command()
-{
-    new cmd[100]
-    read_argv(0, cmd, 100)
-
-    if (equal(cmd, "pauseAck")) {
-        is_paused = !is_paused
-        log_amx("Changed pause state to: %s", (is_paused ? "true" : "false"))
-
-        if (!PAUSE)
-            return PLUGIN_CONTINUE
-
-        if (is_paused) {
-            show_pause_menu()
-        } else {
-            hide_pause_menu()
-        }
-    }
-
-    return PLUGIN_CONTINUE
-}
-
-public show_pause_menu()
-{
-    new players[32] 
-    new playerCount, i 
-    get_players(players, playerCount, "c") 
-    for (i=0; i<playerCount; i++)
-    {
-        if (is_user_admin(players[i]))
-            menu_display(players[i], pauseMenu, 0)
-    }
-}
-
-public hide_pause_menu()
-{
-    new players[32] 
-    new playerCount, i 
-    get_players(players, playerCount, "c") 
-    for (i=0; i<playerCount; i++)
-    {
-        if (is_user_admin(players[i]))
-            show_menu(players[i], 0, " ", 0)
-    }
-}
-
 public is_map_type(type[])
 {
     return equal(map_type, type)
@@ -351,11 +305,6 @@ public hide_pause_menu()
         if (is_user_admin(players[i]))
             show_menu(players[i], 0, " ", 0)
     }
-}
-
-public is_map_type(type[])
-{
-    return equal(map_type, type)
 }
 
 public set_state(new_state[])
