@@ -16,21 +16,26 @@ define("DEFAULT_THEME", "default");
 
 require_once "libs/websockets.php";
 
-
 class WSServer extends WebSocketServer
 {
-	protected function process($client, $message) {
+	protected $modServer = null;
+
+	protected function tick() {
+		if ($this->modServer === null) {
+			$this->modServer = new ModServer(SERVER_ADDR, SERVER_PORT_MOD, $this);
+		}
+		$this->modServer->tick();
 	}
+
+	protected function process($client, $message) {}
   
 	protected function connected($client) {
-		echo "Starting mod server\n";
-		$modserver = new ModServer(SERVER_ADDR, SERVER_PORT_MOD, $this, $client);
-		$modserver->start();
+		$this->modServer->add_client($client);
 	}
 	
 	protected function closed($client) {
-		echo "Connection closed to WS client!\n";
-	}
+		$this->modServer->remove_client($client);
+	}	
 }
 
 class ModServer
@@ -39,10 +44,10 @@ class ModServer
 	protected $db;
 	protected $clients;
 	protected $ws_server;
-	protected $ws_client;
 	protected $theme = DEFAULT_THEME;
+	protected $ws_clients = [];
 	
-	public function __construct($addr, $port, $ws_server, $ws_client)
+	public function __construct($addr, $port, $ws_server)
 	{
 		if (($this->socket = socket_create(AF_INET, SOCK_STREAM, SOL_TCP)) === false) {
 			die("socket_create() failed: reason: " . socket_strerror(socket_last_error()) . "\n");
@@ -71,7 +76,6 @@ class ModServer
 		mysqli_select_db($this->db, DB_DATABASE);
 		
 		$this->ws_server = $ws_server;
-		$this->ws_client = $ws_client;
 
 		echo "Started server on ". $addr.":". $port ."\n";	
 	}
@@ -79,105 +83,129 @@ class ModServer
 	protected function ws_send($msg)
 	{
 		//echo "Sending msg to ws client: ${msg}\n";
-		$val = $this->ws_server->send($this->ws_client, $msg) !== false;
-		
-//		var_dump(socket_last_error($this->ws_client->socket));
-		
-		return $val;
+		foreach ($this->ws_clients as $client)
+			$this->ws_server->send($client, $msg);
+	}
+
+	public function add_client($client)
+	{
+		if (!in_array($client, $this->ws_clients))
+			$this->ws_clients[] = $client;
+		$this->ws_server->send($client, "stats|€@!|" . $this->get_stats());
+		$this->ws_server->send($client, 'ready');
+	}
+
+	public function remove_client($client)
+	{
+		if (($key = array_search($client, $this->ws_clients)) !== false)
+			unset($this->ws_clients[$key]);
 	}
 	
-	public function start()
+	public function tick()
 	{
-		if (!$this->ws_send("ready"))
+		// create a copy, so $clients doesn't get modified by socket_select()
+		$read = $this->clients;
+		$write = [];
+		$except = [];
+#		if (socket_select($read, $write, $except, 1) < 1 && !in_array($this->socket, $read)) 
+#		{
+#			$this->ws_send("stats|€@!|" . $this->get_stats());
+#		}
+
+		if (socket_select($read, $write, $except, 0, 100) < 1)
 			return;
-		
-		while (true)
-		{
-			// create a copy, so $clients doesn't get modified by socket_select()
-			$read = $this->clients;
-			$write = [];
-			$except = [];
-			if (socket_select($read, $write, $except, 1) < 1
-			  && !in_array($this->socket, $read)) 
-			{
-				if (!$this->ws_send("stats|€@!|" . $this->get_stats()))
-					continue;
-			}
-			
-			$client = socket_accept($this->socket);
-			
-			echo "Mod client connected\n";
-			
-			if ($client === false) {
-				echo "socket_accept() failed: reason: " . socket_strerror(socket_last_error($this->socket)) . "\n";
-			}
 
-			$data = socket_read($client, 64);
-			socket_close($client);
-			$data = str_replace("\r", "", $data);
-			$data = str_replace("\n", "", $data);
+		if (!in_array($this->socket, $read))
+			return;
 
-			$name = null;
-			@list($cmd, $name, $name2) = explode("|€@!|", $data);
+		$client = socket_accept($this->socket);
 
-			echo "RAW DATA=<$data>, CMD=<$cmd>, NAME=<$name>\n";
+		echo "Mod client connected\n";
 
-			switch ($cmd)
-			{
-				case "tk":
-					$this->generate_teamkill_image($name, $name2);
-					break;
-				case "knife":
-					$this->generate_knifed_image($name, $name2);
-					break;
-				case "kniferound":
-					$this->generate_kniferound_image($name);
-					break;
-				case "round":
-					#					$this->stop_sound();
-					break;
-				case "unpause":
-					$this->stop_sound();
-					break;
-				case "theme":
-					if (file_exists(dirname(__FILE__) . "/sounds/" . $name)) 
-						$this->theme = $name;
-					break;
-			}
-
-			$this->play_sound($cmd);
-				
-			if (!$this->ws_send("stats|€@!|" . $this->get_stats()))
-				break;
-			
-			// Forward to WS server
-			if (!$this->ws_send($data))
-				break;
+		if ($client === false) {
+			echo "socket_accept() failed: reason: " . socket_strerror(socket_last_error($this->socket)) . "\n";
 		}
-		
-		echo "Connection to WS client closed\n";
-		mysqli_close($this->db);
-		socket_close($this->socket);
-		//$wsserver->disconnect($wsClient);
+
+		$data = socket_read($client, 64);
+		socket_close($client);
+		$data = str_replace("\r", "", $data);
+		$data = str_replace("\n", "", $data);
+
+		$name = null;
+		@list($cmd, $name, $name2) = explode("|€@!|", $data);
+
+		echo "RAW DATA=<$data>, CMD=<$cmd>, NAME=<$name>\n";
+
+		switch ($cmd)
+		{
+		case "tk":
+			$this->send_video_filename($cmd);
+			$this->generate_teamkill_image($name, $name2);
+			break;
+		case "bombexploded":
+			$this->send_video_filename($cmd);
+			break;
+		case "suicide":
+			$this->send_video_filename($cmd);
+			break;
+		case "knife":
+			$this->generate_knifed_image($name, $name2);
+			break;
+		case "kniferound":
+			$this->generate_kniferound_image($name);
+			break;
+		case "firstround":
+		case "round":
+			#					$this->stop_sound();
+			break;
+		case "unpause":
+			$this->stop_sound();
+			break;
+		case "theme":
+			if (file_exists(dirname(__FILE__) . "/sounds/" . $name)) 
+				$this->theme = $name;
+			break;
+		}
+
+		$this->play_sound($cmd);
+		$this->ws_send("stats|€@!|" . $this->get_stats());
+
+		// Forward to WS server
+		$this->ws_send($data);
 	}
 
-	protected function play_sound($dir)
+	protected function send_video_filename($cmd)
 	{
-		$full_dir = dirname(__FILE__) . "/sounds/" . $this->theme . "/" . $dir;
-		if (!file_exists($full_dir))
-			return;
+		$this->ws_send("videofile|€@!|" . $this->get_random_file(dirname(__FILE__) . "/videos/$cmd", false));
+	}
 
-		$files = glob($full_dir ."/*");
-		if (count($files) === 0) {
-			$full_dir = dirname(__FILE__) . "/sounds/" . DEFAULT_THEME . "/" . $dir;
+	protected function get_random_file($full_dir, $full_name = true)
+	{
+		echo "Finding file in: $full_dir\n";
+		$files = [];
+		if (file_exists($full_dir))
 			$files = glob($full_dir ."/*");
-		}
 
 		if (count($files) === 0)
-			return;
+			return false;
 
 		$file = $files[ mt_rand(0, count($files)-1) ];
-		echo "Playing sound: " . $dir . "/" . basename($file) . "\n";
+		if (!$full_name)
+			$file = basename($file);
+		return $file;
+	}
+
+	protected function play_sound($cmd)
+	{
+		$file = $this->get_random_file(dirname(__FILE__) . "/sounds/" . $this->theme ."/" . $cmd);
+		if (!$file)
+		{
+			$file = $this->get_random_file(dirname(__FILE__) . "/sounds/" . DEFAULT_THEME ."/" . $cmd);
+			if (!$file)
+				return;
+		}
+
+		echo "Playing sound: $file\n";
 		exec("mplayer -really-quiet -noconsolecontrols -nolirc $file < /dev/null > /dev/null &");
 	}
 	
@@ -200,6 +228,7 @@ class ModServer
 		$var .= "<th>Got knifed</th>";
 		$var .= "<th>Rounds</th>";
 		$var .= "<th>Sips</th>";
+		$var .= "<th>Beers</th>";
 		$var .= "</tr>";
 		
 		$query = mysqli_query($this->db, "SELECT * FROM stats ORDER BY sips DESC");
@@ -220,6 +249,7 @@ class ModServer
 			$var .= "<td class='text-center'>". $row["got_knifed"] ."</td>\n";
 			$var .= "<td class='text-center'>". $row["rounds"] ."</td>\n";
 			$var .= "<td><b>". $row["sips"] ."</b></td>\n";
+			$var .= "<td><b>". sprintf("%.1f", (int)$row["sips"] / 20) ."</b></td>\n";
 			$var .= "</tr>";
 		}
 		
