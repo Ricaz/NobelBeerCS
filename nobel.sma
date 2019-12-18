@@ -11,12 +11,18 @@
 #include <hamsandwich>
 #include <sqlx>
 #include <cellarray>
+#include <regex>
+#include <nvault>
 
 #pragma ctrlchar '\'
 #define PLUGIN "Nobel Beer CS"
 #define AUTHOR "Nobel Kollegiet"
-#define VERSION "1.8"
-#define ACCESS ADMIN_SLAY
+#define VERSION "1.9"
+#define MAX_FILENAME_LEN 50
+#define VAULT_NAME "nobel"
+#define VAULT_KEY_MAPEND "mapend"
+#define ACCESS_ADMIN ADMIN_SLAY
+#define ACCESS_PUBLIC ADMIN_ALL
 #define MOD_STATE_STOPPED "STOPPED"
 #define MOD_STATE_STARTING "STARTING"
 #define MOD_STATE_STARTED "STARTED"
@@ -35,6 +41,7 @@ new bool:SOUND = false
 new bool:FLASH = false
 new bool:BADUM = false
 new bool:KNIFE = false
+new bool:FLASHPROTECTION = false
 
 new pauseMenu
 
@@ -65,6 +72,11 @@ new Float:round_time
 new map_type[4] = MAP_TYPE_DE
 new alone_round = false
 new first_hostage_touched = false
+new screen_fade_msg
+new bool:flash_protection_active = false
+new Float:flash_protection_time = 12.0
+new Float:map_pause_time = 300.0
+new vault
 
 public plugin_init()
 {
@@ -72,9 +84,12 @@ public plugin_init()
     register_event("HLTV", "round_start", "a", "1=0", "2=0")
     register_event("HLTV", "event_new_round", "a", "1=0", "2=0")
     register_event("DeathMsg", "hook_death", "a")
+    register_event("30", "map_change", "a")
     register_event("TeamInfo", "fix_sip_count", "a")
     register_event("CurWeapon", "set_user_speed", "be") 
+    register_event("HideWeapon", "set_user_speed", "be") 
     register_event("TextMsg", "hostages_rescued", "a", "2&#All_Hostages_R") 
+    register_event("ScreenFade", "event_screenfade", "be", "4=255", "5=255", "6=255", "7>199")
     register_logevent("team_win", 2, "1=Round_End");
     register_logevent("event_round_start", 2, "1=Round_Start")
     register_logevent("bomb_planted_custom", 3, "2=Planted_The_Bomb")
@@ -88,27 +103,29 @@ public plugin_init()
     RegisterHam(Ham_TraceAttack, "hostage_entity", "hostage_traceattack", false) 
     RegisterHam(Ham_TakeDamage, "hostage_entity", "hostage_damage", false)
 
-    register_concmd("nobel_pause", "cmd_nobel_pause", ACCESS, "Disable/enable pause.")
-    register_concmd("nobel_sound", "cmd_nobel_sound", ACCESS, "Enable/disable sound.")
-    register_concmd("nobel_badum", "cmd_nobel_badum", ACCESS, "Enable/disable badum.")
-    register_concmd("nobel_theme", "cmd_nobel_theme", ACCESS, "Change sound theme.")
-    register_concmd("badum", "cmd_badum", ACCESS, "Plays badum!")
-    register_concmd("shutup", "cmd_shutup", ACCESS, "Plays shutup!")
-    register_concmd("ready", "cmd_ready", ACCESS, "Plays reeady sound!")
-    register_concmd("nobel", "cmd_nobel", ACCESS, "View current settings.")
-    register_concmd("nobelstats", "cmd_nobel_stats", ACCESS, "View simple stats.")
-    register_concmd("nobel_stats", "cmd_nobel_stats", ACCESS, "View simple stats.")
-    register_concmd("nobel_full_stats", "cmd_nobel_full_stats", ACCESS, "View full stats.")
-    register_concmd("nobel_clear_stats", "cmd_nobel_clear_stats", ACCESS, "Clear all stats.")
-    register_concmd("nobel_start", "cmd_nobel_start", ACCESS, "Start the plugin.")
-    register_concmd("nobel_serverstart", "cmd_nobel_serverstart", ACCESS, "")
-    register_concmd("nobel_stop", "cmd_nobel_stop", ACCESS, "Stop the plugin.")
-    register_concmd("nobel_flash", "cmd_nobel_flash", ACCESS, "Toggle the flash functionality.")
-    register_concmd("nobel_knife", "cmd_nobel_knife", ACCESS, "Toggle the knife functionality.")
-    register_concmd("nobel_knife_now", "cmd_nobel_knife_now", ACCESS, "Toggle the knife functionality NOW.")
+    register_concmd("nobel_maps", "cmd_nobel_maps", ACCESS_PUBLIC, "Lists available maps on the server.")
+    register_concmd("nobel_pause", "cmd_nobel_pause", ACCESS_ADMIN, "Disable/enable pause.")
+    register_concmd("nobel_sound", "cmd_nobel_sound", ACCESS_ADMIN, "Enable/disable sound.")
+    register_concmd("nobel_badum", "cmd_nobel_badum", ACCESS_ADMIN, "Enable/disable badum.")
+    register_concmd("nobel_theme", "cmd_nobel_theme", ACCESS_ADMIN, "Change sound theme.")
+    register_concmd("badum", "cmd_badum", ACCESS_ADMIN, "Plays badum!")
+    register_concmd("shutup", "cmd_shutup", ACCESS_ADMIN, "Plays shutup!")
+    register_concmd("ready", "cmd_ready", ACCESS_ADMIN, "Plays reeady sound!")
+    register_concmd("nobel", "cmd_nobel", ACCESS_ADMIN, "View current settings.")
+    register_concmd("nobelstats", "cmd_nobel_stats", ACCESS_ADMIN, "View simple stats.")
+    register_concmd("nobel_stats", "cmd_nobel_stats", ACCESS_ADMIN, "View simple stats.")
+    register_concmd("nobel_full_stats", "cmd_nobel_full_stats", ACCESS_ADMIN, "View full stats.")
+    register_concmd("nobel_clear_stats", "cmd_nobel_clear_stats", ACCESS_ADMIN, "Clear all stats.")
+    register_concmd("nobel_start", "cmd_nobel_start", ACCESS_ADMIN, "Start the plugin.")
+    register_concmd("nobel_serverstart", "cmd_nobel_serverstart", ACCESS_ADMIN, "")
+    register_concmd("nobel_stop", "cmd_nobel_stop", ACCESS_ADMIN, "Stop the plugin.")
+    register_concmd("nobel_flash", "cmd_nobel_flash", ACCESS_ADMIN, "Toggle team flash dampening")
+    register_concmd("nobel_knife", "cmd_nobel_knife", ACCESS_ADMIN, "Toggle the knife functionality.")
+    register_concmd("nobel_knife_now", "cmd_nobel_knife_now", ACCESS_ADMIN, "Toggle the knife functionality NOW.")
+    register_concmd("nobel_flashprotection", "cmd_nobel_flashprotection", ACCESS_ADMIN, "Toggle flash protection")
 
-//    register_concmd("nobel_fake_pausemenu", "cmd_nobel_fake_pausemenu", ACCESS, "Fakes the pause menu.")
-//    register_concmd("nobel_fake_teamswitch", "switch_teams", ACCESS, "Force team switch")
+//    register_concmd("nobel_fake_pausemenu", "cmd_nobel_fake_pausemenu", ACCESS_ADMIN, "Fakes the pause menu.")
+//    register_concmd("nobel_fake_teamswitch", "switch_teams", ACCESS_ADMIN, "Force team switch")
     create_menus()
 
     // Find map type
@@ -137,6 +154,8 @@ public plugin_init()
     register_cvar("nobel_db_user", "root")
     register_cvar("nobel_db_pass", "root")
     register_cvar("nobel_db_database", "beer_cs")
+    register_cvar("nobel_num_shield", "2")
+    register_cvar("nobel_num_weed", "3")
 
     map_time_half = ((get_cvar_num("mp_timelimit") * 60) / 2)
 
@@ -180,6 +199,112 @@ public plugin_init()
     if(SqlConnection == Empty_Handle) {
         db_available=false
     }
+
+    screen_fade_msg = get_user_msgid("ScreenFade")
+
+    if (retrieve_data_int(VAULT_KEY_MAPEND) == 1) {
+        log_amx("Starting timer for notifying pause end")
+        set_task(map_pause_time, "mapend_pause_end", 4132, "", 0, "a", 1)
+	}
+}
+
+public plugin_end() {
+	close_vault()
+}
+
+public open_vault() {
+    if (!vault) {
+        vault = nvault_open(VAULT_NAME)
+        if (vault == INVALID_HANDLE) {
+            log_amx("Failed to open vault: %s", VAULT_NAME)
+            return 0
+        }
+    }
+    log_amx("Successfully opened vault: %s", VAULT_NAME)
+    return 1
+}
+
+public close_vault() {
+    if (vault) {
+        nvault_close(vault)
+    }
+}
+
+public save_data(const key[], const value[])
+{
+    if (!open_vault())
+        return -1
+
+    nvault_set(vault, key, value)
+    return 0
+}
+
+public retrieve_data_int(const key[])
+{
+    if (!open_vault())
+        return -1
+
+    return nvault_get(vault, key)
+}
+
+public retrieve_data_string(const key[], const out[], size)
+{
+    if (!open_vault())
+        return -1
+
+    nvault_get(vault, key, out, size)
+    return 0
+}
+
+public client_command()
+{
+    new cmd[100]
+    read_argv(0, cmd, 100)
+
+    if (equal(cmd, "pauseAck")) {
+        is_paused = !is_paused
+        log_amx("Changed pause state to: %s", (is_paused ? "true" : "false"))
+
+        if (!PAUSE)
+            return PLUGIN_CONTINUE
+
+        if (is_paused) {
+            show_pause_menu()
+        } else {
+            hide_pause_menu()
+        }
+    }
+
+    return PLUGIN_CONTINUE
+}
+
+public show_pause_menu()
+{
+    new players[32] 
+    new playerCount, i 
+    get_players(players, playerCount, "c") 
+    for (i=0; i<playerCount; i++)
+    {
+        if (is_user_admin(players[i]))
+            menu_display(players[i], pauseMenu, 0)
+    }
+}
+
+public hide_pause_menu()
+{
+    new players[32] 
+    new playerCount, i 
+    get_players(players, playerCount, "c") 
+    for (i=0; i<playerCount; i++)
+    {
+        if (is_user_admin(players[i]))
+            show_menu(players[i], 0, " ", 0)
+    }
+}
+
+public is_map_type(type[])
+{
+    return equal(map_type, type)
 }
 
 public client_command()
@@ -254,6 +379,26 @@ public message_textmsg(MsgId, MsgDest, MsgEntity)
     }
 }  
 
+public map_change()
+{
+    if (ENABLED) {
+        save_data(VAULT_KEY_MAPEND, "1")
+        send_event("mapend")
+    }
+    return PLUGIN_CONTINUE
+}
+
+public mapend_pause_end()
+{
+    save_data(VAULT_KEY_MAPEND, "0")
+    if (in_state(MOD_STATE_STOPPED)) {
+        log_amx("mapend_pause_end timer elapsed while mod not started, sending event")
+        send_event_always("mapend_pause_end")
+    } else {
+        log_amx("mapend_pause_end timer elapsed, but mod already started, so skipping event")
+    }
+}
+
 public weapon_idle_flashbang(id)
 {
     if (FLASH && !flash_thrown)
@@ -291,16 +436,43 @@ public hostages_rescued() {
     send_event("hostagesrescued")
 }
 
+public event_screenfade(id) {
+    if (!flash_protection_active)
+        return 
+
+    new Float:gametime = get_gametime()
+
+    message_begin(MSG_ONE, screen_fade_msg, {0,0,0}, id)
+    write_short(3<<12) // duration
+    write_short(1<<6) // hold time
+    write_short(0) // flags
+    write_byte(random(255)) // r
+    write_byte(random(255)) // g
+    write_byte(random(255)) // b
+    write_byte(235) // a
+    message_end()
+
+    client_print(0, print_console, "Flash time %s", gametime)
+}
+
 public event_new_round() {
+
+    log_amx("CS event: new_round");
+    if (!ENABLED)
+        return
+
+    log_amx("CS event: new_round (mod ENABLED)");
     remove_task(7748)
     freezetime = true
 }
 
 public event_round_start() {
 
+    log_amx("CS event: round_start");
     if (!ENABLED)
         return
 
+    log_amx("CS event: round_start (mod ENABLED)");
     freezetime = false
     defused = false
     exploded = false
@@ -314,22 +486,36 @@ public event_round_start() {
 
     new params[1]
     params[0] = 0
-    set_task(8.0, "shieldforce_timeout", 3233, params, 0, "a", 1)
+    set_task(8.0, "shieldforce_or_weed_timeout", 3233, params, 0, "a", 1)
 
     new Float:roundending_timeout = (round_time - 19.0)
     log_amx("roundending timeout set. Value=%f", roundending_timeout)
 
     set_task(roundending_timeout, "roundending", 6681, params, 0, "a", 1)
+
+    if (FLASHPROTECTION) {
+        flash_protection_active = true
+        set_task(flash_protection_time, "stop_flash_protection", 9001, params, 0, "a", 1)
+    }
 }
 
-public shieldforce_timeout() {
+public stop_flash_protection() {
+	remove_task(9001)
+	log_amx("Flash protection over")
+	flash_protection_active = false
+}
+
+public shieldforce_or_weed_timeout() {
     if (!ENABLED)
         return
+
+    new nobel_num_shield = get_cvar_num("nobel_num_shield")
+    new nobel_num_weed = get_cvar_num("nobel_num_weed")
 
     new players[32]
     new playerCount, i
     get_players(players, playerCount, "c")
-    new shield_t = 0, shield_ct = 0
+    new shield_t = 0, shield_ct = 0, smoke_t = 0, smoke_ct = 0
     new CsTeams:team
     for (i=0; i<playerCount; i++)
     {
@@ -337,16 +523,22 @@ public shieldforce_timeout() {
         if (team == CS_TEAM_T) 
         {
             shield_t += cs_get_user_shield(players[i])
+            smoke_t += user_has_weapon(players[i], CSW_SMOKEGRENADE)
         }
         else if (team == CS_TEAM_CT)
         {
             shield_ct += cs_get_user_shield(players[i])
+            smoke_ct += user_has_weapon(players[i], CSW_SMOKEGRENADE)
         }
     }
 
-    if (shield_t >= 2 || shield_ct >= 2)
+    if (shield_t >= nobel_num_shield || shield_ct >= nobel_num_shield)
     {
         send_event("shieldforce")
+    }
+    else if (smoke_t >= nobel_num_weed || smoke_ct >= nobel_num_weed)
+    {
+        send_event("weed")
     }
 }
 
@@ -359,7 +551,7 @@ public roundending() {
     }
 }
 
-public team_win(plaf) {
+public team_win() {
     if (!ENABLED)
         return
 
@@ -458,6 +650,7 @@ public switch_teams() {
     for (i = 0; i < playerCount; i++) {
         new playerName[64]
         cs_set_user_vip(players[i], 0, 0 ,0)
+        cs_set_user_vip(players[i], 0, 0, 1)
         get_user_name(players[i], playerName, charsmax(playerName))
         new CsTeams:teamid = cs_get_user_team(players[i])
         if (teamid == CS_TEAM_T)
@@ -476,6 +669,12 @@ public switch_teams() {
         }
     }
     if (is_map_type(MAP_TYPE_AS) && firstCTplayer >= 0) {
+        cs_set_user_vip(firstCTplayer, 1, 1, 1)
+    }
+    if (is_map_type(MAP_TYPE_AS) && firstCTplayer >= 0) {
+        new playerName[64]
+        get_user_name(firstCTplayer, playerName, charsmax(playerName))
+        log_amx("Setting VIP status on %s", playerName)
         cs_set_user_vip(firstCTplayer, 1, 1, 1)
     }
 }
@@ -660,6 +859,8 @@ public hook_death()
         }
     }
 
+    log_amx("Death event occurred. Killer: %s, Victim: %s", killername, victimname)
+
     // UPDATE STATS
     if (suicide)
     {
@@ -787,6 +988,9 @@ public set_user_speed(id)
         return
 
     if (freezetime || cannot_move[id] == true) {
+        new user_name[32]
+        get_user_name(id, user_name, charsmax(user_name))
+        log_amx("Freezing player due to freezetime or by kill: %s, freezetime: %i, cannot_move[%i]: %i", user_name, freezetime, id, cannot_move[id])
         set_user_maxspeed(id, 0.1)
     }
     else {
@@ -813,6 +1017,8 @@ public set_user_speed(id)
                 CSW_FLASHBANG,
                 CSW_DEAGLE,
                 CSW_P228, 
+                CSW_SHIELDGUN,
+                CSI_SHIELD,
                 CSW_MP5NAVY: {
                     speed = 250.0
                 }
@@ -875,6 +1081,9 @@ public unfreeze_player(params[], id)
 stock freeze_player(killer)
 {
     if (ENABLED) {
+        new user_name[32]
+        get_user_name(killer, user_name, charsmax(user_name))
+        log_amx("Freezing player: %s", user_name)
         set_user_maxspeed(killer, 0.1)
         new params[1]
         params[0] = killer
@@ -1008,8 +1217,38 @@ public disable_knife_round()
     return PLUGIN_HANDLED;
 }
 
+public cmd_nobel_maps(id, level, cid)
+{
+    if (!cmd_access(id, level, cid, 0))
+        return PLUGIN_HANDLED;
+
+    new mapsdir[] = "maps"
+    new curfile[MAX_FILENAME_LEN]
+
+    if (!dir_exists(mapsdir)) {
+        client_print(id, print_console, "No maps found on server")
+        return PLUGIN_HANDLED
+    }
+
+    new mapid = 1
+    new dh = open_dir(mapsdir, curfile, MAX_FILENAME_LEN - 1)
+    while (next_file(dh, curfile, MAX_FILENAME_LEN - 1)) {
+        // if (containi(curfile, ".bsp") != -1)
+        if (regex_match_simple(curfile, ".bsp$", PCRE_CASELESS) > 0) {
+            replace_string(curfile, MAX_FILENAME_LEN - 1, ".bsp", "", false)
+            client_print(id, print_console, "%d: %s", mapid++, curfile)
+        }
+    }
+    close_dir(dh) 
+
+    return PLUGIN_HANDLED;
+}
+
 public cmd_nobel_knife_now(id, level, cid)
 {
+    if (!cmd_access(id, level, cid, 0))
+        return PLUGIN_HANDLED;
+
     if (ENABLED)
         disable_knife_round()
 
@@ -1018,6 +1257,9 @@ public cmd_nobel_knife_now(id, level, cid)
 
 public cmd_nobel_knife(id, level, cid)
 {
+    if (!cmd_access(id, level, cid, 0))
+        return PLUGIN_HANDLED;
+
     if (!ENABLED)
         return PLUGIN_HANDLED;
  
@@ -1054,7 +1296,7 @@ public cmd_nobel_flash(id, level, cid)
     if (ENABLED)
     {
         FLASH = !FLASH
-        client_print(0, print_chat, "Nobel TIIIIIM FLASH %s!", (FLASH ? "enabled" : "disabled"))
+        //client_print(0, print_chat, "Nobel TIIIIIM FLASH %s!", (FLASH ? "enabled" : "disabled"))
     }
     return PLUGIN_HANDLED
 }
@@ -1165,6 +1407,7 @@ public cmd_nobel(id, level, cid)
     client_print(id, print_console, "nobel_flash %s", (FLASH ? "Enabled" : "Disabled"))
     client_print(id, print_console, "nobel_badum %s", (BADUM ? "Enabled" : "Disabled"))
     client_print(id, print_console, "nobel_knife %s", (KNIFE ? "Enabled" : "Disabled"))
+    client_print(id, print_console, "nobel_flashprotection %s", (FLASHPROTECTION ? "Enabled" : "Disabled"))
     return PLUGIN_HANDLED;
 }
 
@@ -1205,7 +1448,8 @@ public cmd_nobel_serverstart(id, level, cid)
 
     ENABLED = true
     SOUND = true
-    
+    FLASHPROTECTION = true
+
     if (db_available) {
         cmd_nobel_clear_stats(0, 0, 0)
         PAUSE = true
@@ -1257,6 +1501,19 @@ public cmd_nobel_pause(id, level, cid)
         client_print(0, print_chat, "Nobel Beer CS pausing enabled")
     else
         client_print(0, print_chat, "Nobel Beer CS pausing disabled")
+    return PLUGIN_HANDLED;
+}
+
+public cmd_nobel_flashprotection(id, level, cid)
+{
+    if (!cmd_access(id, level, cid, 0))
+        return PLUGIN_HANDLED;
+
+    FLASHPROTECTION = !FLASHPROTECTION
+    if (FLASHPROTECTION)
+        client_print(0, print_chat, "Nobel Beer CS flash protection enabled")
+    else
+        client_print(0, print_chat, "Nobel Beer CS flash protection disabled")
     return PLUGIN_HANDLED;
 }
 
