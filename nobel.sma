@@ -1330,11 +1330,11 @@ stock send_event_always(cmd[], killer[] = "", victim[] = "")
     sock = socket_open(nobel_server_host, nobel_server_port, SOCKET_TCP, error)
     if (!error)
     {
-        new buf[128]
+        new buf[256]
         if (USE_JSON) {
-            format(buf, 128, "{\"event\":\"%s\",\"killer\":\"%s\",\"victim\":\"%s\"}", cmd, killer, victim)
+            format(buf, 256, "{\"event\":\"%s\",\"killer\":\"%s\",\"victim\":\"%s\"}", cmd, killer, victim)
         } else {
-            format(buf, 128, "%s|€@!|%s|€@!|%s", cmd, killer, victim)
+            format(buf, 256, "%s|€@!|%s|€@!|%s", cmd, killer, victim)
         }
         new len = strlen(buf)
     
