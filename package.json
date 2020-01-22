@@ -1,20 +1,40 @@
 {
   "name": "beercs",
   "version": "1.0.0",
-  "description": "Media server for AMXMODX drinking game.",
-  "keywords": [
-    "beer",
-    "cs"
-  ],
-  "main": "index.js",
+  "description": "Media server for a drinking game in CS1.6",
+  "main": "src/index.js",
+  "dependencies": {
+    "dotenv": "^6.2.0",
+    "vue": "^2.6.10",
+    "vue-native-websocket": "^2.0.13",
+    "websocket": "^1.0.30"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.7.2",
+    "@babel/preset-env": "^7.7.1",
+    "babel-loader": "^8.0.6",
+    "webpack": "^4.41.2",
+    "webpack-cli": "^3.3.10"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node index.js"
+    "build": "webpack-cli --mode production --progress",
+    "server": "node src/index.js",
+    "watch": "webpack-cli --mode development --watch --progress"
   },
-  "author": "Martin Alstrup <lolstrup@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ricaz/BeerCS.git"
+  },
+  "keywords": [
+    "beer",
+    "cs",
+    "nobel"
+  ],
+  "author": "Martin Alstrup",
   "license": "ISC",
-  "dependencies": {
-    "dotenv": "^4.0.0",
-    "websocket": "^1.0.24"
-  }
+  "bugs": {
+    "url": "https://github.com/Ricaz/BeerCS/issues"
+  },
+  "homepage": "https://github.com/Ricaz/BeerCS#readme"
 }

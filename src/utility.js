@@ -6,7 +6,7 @@ const fs   = require('fs')
 
 function rng(min, max) {
 	min = Math.floor(min)
-	max = Math.floor(max) + 1
+	max = Math.floor(max)
 	return Math.floor(Math.random() * (max - min) + min)
 }
 
@@ -30,27 +30,28 @@ class Player {
 		let theme = process.env.THEME || 'default'
 		let soundDir = path.join(path.dirname(require.main.filename), '/sounds', theme, name)
 
-		fs.readdir(path.join(soundDir), (err, files) => {
+		fs.readdir(soundDir, (err, files) => {
 			if (err) {
-				if (err.code == 'ENOENT')
-					console.log(`[MAIN] No sounds for event "${name}"`)
-				else 
-					console.log(`[MAIN] ${err}`)
+				if (err.code == 'ENOENT') {
+					// console.log(`[MAIN] No sounds for event "${name}"`)
+				} else { 
+					console.log(`[SND]  ${err}`)
+				}
 				return
 			}
 
-			if (!files) {
-				console.log(`[MAIN] No files in ${fullPath}`)
-				return
-			}
-
-			let file = rng(1, files.length) + '.mp3'
+			let file = rng(0, files.length) + '.mp3'
 			let fullPath = path.join(soundDir, file)
-			console.log(`[MAIN] Playing ${fullPath}`)
-			exec(`${process.env.PLAYER} ${fullPath}`, (err, stdout, stderr) => {
-				if (err) {
-					console.log(`[MAIN] ${err}`)
-					return
+			// console.log(`[MAIN] Playing ${fullPath}`)
+			fs.exists(fullPath, (exists) => {
+				if (exists) {
+					console.log(`[SND]  Playing ${name}/${file}`);
+					exec(`${process.env.PLAYER} ${fullPath}`, (err, stdout, stderr) => {
+						if (err) {
+							console.log(`[SND]  ${err}`)
+							return
+						}
+					})
 				}
 			})
 		})

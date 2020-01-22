@@ -1,0 +1,50 @@
+<html>
+<head>
+	<title>Nobel stats</title>
+	<link rel="stylesheet" type="text/css" href="css/bootstrap.min.css" />
+	<link rel="stylesheet" type="text/css" href="css/app.css" />
+
+</head>
+<body>
+	<div class="container-fluid">
+		<div class="row">
+			<div class="col-12">
+				<h1 class="text-center">Beer CS</h1>
+
+				<div class="container" id="app">
+
+					<h2>Last command: <pre class="d-inline">{{ status }}</pre></h2>
+					<table class="table table-fluid">
+						<thead>
+							<tr>
+								<th>Name</th>
+								<th>Kills</th>
+								<th>TKs</th>
+								<th>Knifekills</th>
+								<th>Knifed</th>
+								<th>Sips</th>
+								<th>Rounds</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr v-for="player in scores">
+								<td>{{ player.name }}</td>
+								<td>{{ player.kills }}</td>
+								<td>{{ player.teamkills }}</td>
+								<td>{{ player.knifekills }}</td>
+								<td>{{ player.knifed }}</td>
+								<td>{{ player.sips }}</td>
+								<td>{{ player.rounds }}</td>
+							</tr>
+						</tbody>
+					</table>
+					<audio ref="audio" id="audio">Audio not available</audio>
+					<video ref="video"  id="video">Video not available</video>
+				</div>
+				
+			</div>
+		</div>
+	</div>
+
+	<script type="text/javascript" src="js/bundle.js"></script>
+</body>

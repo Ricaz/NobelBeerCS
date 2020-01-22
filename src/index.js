@@ -1,3 +1,4 @@
+#!node
 'use strict'
 
 // Load config from .env
@@ -11,7 +12,7 @@ const path	= require('path')
 const fs	= require('fs')
 
 // Load custom modules
-const http	= require('./http-app')
+const http	= require('./http-server')
 const log	= require('./utility').log
 const player = require('./utility').player
 
@@ -30,15 +31,11 @@ var tcp = net.createServer((sock) => {
 
 	sock.on('data', (data) => {
 		let cmd = decodeTCPMessage(data).cmd
-		log.tcp(`${host} sent "${cmd}"-command.`) // Forward to WS clients
-		clientsWs.forEach((client) => {
-			let wsIP = exIP(client.remoteAddress)		
-			log.ws(`Forwarding "${cmd}"-command to ${wsIP}`)
-			client.send(data)
-		})
-
-		// TODO: Remove this!
-		player.playSound(cmd)
+		log.tcp(`[${host}]: ${cmd}`)
+		
+		// Forward to WS clients
+		clientsWs.forEach((client) => { client.send(data) })
+		log.ws(`Forwarded to ${clientsWs.length} clients.`)
 	}) 
 	sock.on('error', (err) => {
 		log.tcp(err)
@@ -62,23 +59,24 @@ http.listen(process.env.PORT_HTTP, (err) => {
 
 var ws = new WSs({
 	httpServer: http,
-	autoAcceptConnections: true
+	autoAcceptConnections: false
+})
+
+ws.on('request', (req) => {
+	let connection = req.accept('beercs', req.origin)
 })
 
 ws.on('connect', (conn) => {
-	let host = conn.remoteAddress.split(':')
-	host = host[host.length - 1]
-	log.ws(`Connection from ${host} accepted.`)
-
-	conn.on('message', (data) => {
-		log.ws(conn.host + ' sent: ' + data)
-	})
-	
 	conn.id = connID++
 	clientsWs[conn.id] = conn
+	log.ws(`[${conn.id}] Connected from ${conn.socket.remoteAddress}.`)
+
+	conn.on('message', (data) => {
+		log.ws(`[${conn.id}]: ${data}`)
+	})
 
 	conn.on('close', (reason, description) => {
-		log.ws('Peer [' + conn.id + '] from ' + conn.remoteAddress + ' disconnected.')
+		log.ws(`[${conn.id}] Disconnected.`)
 	})
 })
 
@@ -87,14 +85,11 @@ function decodeTCPMessage(msg) {
 	let out = {}
 
 	let split = msg.split("|€@!|")
-	return {
-		'cmd': split.shift(),
-		'args': split
-	}
+	return { 'cmd': split.shift(), 'args': split }
 }
 
 // Helper functions
-// Random number generator
+// RNG
 function rng(min, max) {
 	min = Math.floor(min)
 	max = Math.floor(max) + 1
