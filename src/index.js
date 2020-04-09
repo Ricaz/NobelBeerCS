@@ -23,18 +23,31 @@ var readyTcp	= false
 var readyWs		= false
 var connID		= 0
 
+const soundsPath = 'dist/assets/sounds/'
+var themes		= loadThemes()
+var theme		= 'default'
+
 // Create TCP socket server and set up event handling on it
 var tcp = net.createServer((sock) => {
 	var host = exIP(sock.remoteAddress)
 	log.tcp('Client connected from ' + host) 
 	sock.setEncoding('utf8')
 
+
 	sock.on('data', (data) => {
-		let cmd = decodeTCPMessage(data).cmd
-		log.tcp(`[${host}]: ${cmd}`)
+		let cmd = JSON.parse(decodeTCPMessage(data).cmd)
+		log.tcp(`[${host}]: ${data}`)
+
+		if (cmd.cmd === 'theme' && themes.includes(cmd.args[0])) {
+			theme = cmd.args[0]
+			log.tcp(`Switched theme to '${theme}'.`)
+		}
+
+		cmd.playsound = getSound(cmd);
+		console.log(cmd)
 		
 		// Forward to WS clients
-		clientsWs.forEach((client) => { client.send(data) })
+		clientsWs.forEach((client) => { client.send(JSON.stringify(cmd)) })
 		log.ws(`Forwarded to ${clientsWs.length} clients.`)
 	}) 
 	sock.on('error', (err) => {
@@ -86,6 +99,32 @@ function decodeTCPMessage(msg) {
 
 	let split = msg.split("|€@!|")
 	return { 'cmd': split.shift(), 'args': split }
+}
+
+function getSound(cmd) {
+	let sounds = []
+	try {
+		sounds = fs.readdirSync(soundsPath + theme + '/' + cmd.cmd)
+		let sound = sounds[Math.floor(Math.random() * sounds.length)];
+		let path = `sounds/${theme}/${cmd.cmd}/${sound}`
+		return path
+	} catch (e) {
+		log.tcp(`No sounds found for event ${cmd.cmd}`)
+		return false
+	}
+}
+
+function loadThemes() {
+	let files = fs.readdirSync(soundsPath)
+	let tmp = []
+	files.forEach((file) => {
+		let stats = fs.statSync(soundsPath + file)
+		if (stats.isDirectory()) {
+			tmp.push(file)
+		}
+	})
+
+	return tmp
 }
 
 // Helper functions

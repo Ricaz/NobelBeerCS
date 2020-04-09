@@ -5,16 +5,15 @@
   "main": "src/index.js",
   "dependencies": {
     "dotenv": "^6.2.0",
-    "vue": "^2.6.10",
-    "vue-native-websocket": "^2.0.13",
-    "websocket": "^1.0.30"
+    "vue": "^2.6.11",
+    "vue-native-websocket": "^2.0.14"
   },
   "devDependencies": {
-    "@babel/core": "^7.7.2",
-    "@babel/preset-env": "^7.7.1",
-    "babel-loader": "^8.0.6",
-    "webpack": "^4.41.2",
-    "webpack-cli": "^3.3.10"
+    "@babel/core": "^7.9.0",
+    "@babel/preset-env": "^7.9.5",
+    "babel-loader": "^8.1.0",
+    "webpack": "^4.42.1",
+    "webpack-cli": "^3.3.11"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -29,7 +28,8 @@
   "keywords": [
     "beer",
     "cs",
-    "nobel"
+    "nobel",
+    "øl"
   ],
   "author": "Martin Alstrup",
   "license": "ISC",
