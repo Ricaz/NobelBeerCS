@@ -3,7 +3,7 @@ release/
 sounds/
 .npm/
 
-package-lock.json
+dist/assets/js/bundle.js
 
 *.log
 *.swp
