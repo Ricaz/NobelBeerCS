@@ -1,6 +1,5 @@
 node_modules/
 release/
-sounds/
 .npm/
 
 dist/assets/js/bundle.js
