@@ -6,7 +6,8 @@
   "dependencies": {
     "dotenv": "^6.2.0",
     "vue": "^2.6.11",
-    "vue-native-websocket": "^2.0.14"
+    "vue-native-websocket": "^2.0.14",
+    "websocket": "^1.0.31"
   },
   "devDependencies": {
     "@babel/core": "^7.9.0",
