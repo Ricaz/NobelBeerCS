@@ -2,7 +2,7 @@ import Vue from 'vue'
 // import Vuex from 'vuex'
 import VueNativeSock from 'vue-native-websocket'
 
-let socketHost = 'ws://localhost:8080'
+let socketHost = 'wss://localhost:8080'
 let socketOptions = { 
 	protocol: 'beercs',
 	format: 'json',

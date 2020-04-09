@@ -1,10 +1,15 @@
-const http = require('http')
+const http = require('https')
 const path = require('path')
 const url = require('url')
 const fs = require('fs')
 const log = require('./utility').log
 
-var server = http.createServer((req, res) => {
+const options = {
+	key: fs.readFileSync('tls/key.pem'),
+	cert: fs.readFileSync('tls/cert.pem'),
+}
+
+var server = http.createServer(options, (req, res) => {
 	log.http(`${req.method} ${req.url}`)
 
 	var parsedUrl = url.parse(req.url)
