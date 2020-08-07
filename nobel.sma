@@ -160,6 +160,7 @@ public plugin_init()
     register_cvar("nobel_db_database", "beer_cs")
     register_cvar("nobel_num_shield", "2")
     register_cvar("nobel_num_weed", "3")
+    register_cvar("nobel_num_kit", "2")
 
     map_time_half = ((get_cvar_num("mp_timelimit") * 60) / 2)
 
@@ -477,11 +478,12 @@ public shieldforce_or_weed_timeout() {
 
     new nobel_num_shield = get_cvar_num("nobel_num_shield")
     new nobel_num_weed = get_cvar_num("nobel_num_weed")
+    new nobel_num_kit = get_cvar_num("nobel_num_kit")
 
     new players[32]
     new playerCount, i
     get_players(players, playerCount, "c")
-    new shield_t = 0, shield_ct = 0, smoke_t = 0, smoke_ct = 0
+    new shield_t = 0, shield_ct = 0, smoke_t = 0, smoke_ct = 0, kit_t = 0, kit_ct = 0
     new CsTeams:team
     for (i=0; i<playerCount; i++)
     {
@@ -490,11 +492,13 @@ public shieldforce_or_weed_timeout() {
         {
             shield_t += cs_get_user_shield(players[i])
             smoke_t += user_has_weapon(players[i], CSW_SMOKEGRENADE)
+            kit_t += cs_get_user_defuse(players[i])
         }
         else if (team == CS_TEAM_CT)
         {
             shield_ct += cs_get_user_shield(players[i])
             smoke_ct += user_has_weapon(players[i], CSW_SMOKEGRENADE)
+            kit_ct += cs_get_user_defuse(players[i])
         }
     }
 
@@ -506,7 +510,17 @@ public shieldforce_or_weed_timeout() {
     {
         send_event("weed")
     }
+    if (kit_t >= nobel_num_kit || kit_ct >= nobel_num_kit)
+    {
+        set_task(3.0, "event_kidd")
+    }
 }
+
+public event_kidd() {
+    send_event("kidd")
+    client_print(0, print_chat, "Kiiiiiidd!")
+}
+
 
 public roundending() {
     if (!ENABLED)
