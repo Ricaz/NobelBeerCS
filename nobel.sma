@@ -41,6 +41,7 @@ new bool:SOUND = false
 new bool:FLASH = false
 new bool:BADUM = false
 new bool:KNIFE = false
+new bool:ANTIZOOMPISTOL = false
 new bool:FLASHPROTECTION = false
 
 new pauseMenu
@@ -102,6 +103,8 @@ public plugin_init()
     RegisterHam(Ham_Weapon_WeaponIdle, "weapon_flashbang", "weapon_idle_flashbang")
     RegisterHam(Ham_TraceAttack, "hostage_entity", "hostage_traceattack", false) 
     RegisterHam(Ham_TakeDamage, "hostage_entity", "hostage_damage", false)
+    RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_awp", "event_zoompistol")
+    RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_g3sg1", "event_zoompistol")
 
     register_concmd("nobel_maps", "cmd_nobel_maps", ACCESS_PUBLIC, "Lists available maps on the server.")
     register_concmd("nobel_pause", "cmd_nobel_pause", ACCESS_ADMIN, "Disable/enable pause.")
@@ -123,6 +126,7 @@ public plugin_init()
     register_concmd("nobel_knife", "cmd_nobel_knife", ACCESS_ADMIN, "Toggle the knife functionality.")
     register_concmd("nobel_knife_now", "cmd_nobel_knife_now", ACCESS_ADMIN, "Toggle the knife functionality NOW.")
     register_concmd("nobel_flashprotection", "cmd_nobel_flashprotection", ACCESS_ADMIN, "Toggle flash protection")
+    register_concmd("nobel_antizoompistol", "cmd_nobel_antizoompistol", ACCESS_ADMIN, "Toggle zoompistol punishment.")
 
 //    register_concmd("nobel_fake_pausemenu", "cmd_nobel_fake_pausemenu", ACCESS_ADMIN, "Fakes the pause menu.")
 //    register_concmd("nobel_fake_teamswitch", "switch_teams", ACCESS_ADMIN, "Force team switch")
@@ -413,6 +417,19 @@ public event_new_round() {
     log_amx("CS event: new_round (mod ENABLED)");
     remove_task(7748)
     freezetime = true
+}
+
+public event_zoompistol(id) {
+    if (!ANTIZOOMPISTOL)
+        return HAM_IGNORED
+    new owner_id = pev(id, pev_owner)
+    new owner_name[63]
+    get_user_name(owner_id, owner_name, 63)
+    client_print(0, print_chat, "%s bruger zoompistol!1!!", owner_name)
+
+    user_slap(owner_id, random_num(5, 15), 1)
+
+    return HAM_HANDLED
 }
 
 public event_round_start() {
@@ -1398,6 +1415,7 @@ public cmd_nobel_serverstart(id, level, cid)
     ENABLED = true
     SOUND = true
     FLASHPROTECTION = true
+    ANTIZOOMPISTOL = true
 
     if (db_available) {
         cmd_nobel_clear_stats(0, 0, 0)
@@ -1450,6 +1468,19 @@ public cmd_nobel_pause(id, level, cid)
         client_print(0, print_chat, "Nobel Beer CS pausing enabled")
     else
         client_print(0, print_chat, "Nobel Beer CS pausing disabled")
+    return PLUGIN_HANDLED;
+}
+
+public cmd_nobel_antizoompistol(id, level, cid)
+{
+    if (!cmd_access(id, level, cid, 0))
+        return PLUGIN_HANDLED;
+
+    ANTIZOOMPISTOL = !ANTIZOOMPISTOL
+    if (ANTIZOOMPISTOL)
+        client_print(0, print_chat, "Nobel Beer CS antizoompistol enabled")
+    else
+        client_print(0, print_chat, "Nobel Beer CS antizoompistol disabled")
     return PLUGIN_HANDLED;
 }
 
