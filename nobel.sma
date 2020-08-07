@@ -105,6 +105,7 @@ public plugin_init()
     RegisterHam(Ham_TakeDamage, "hostage_entity", "hostage_damage", false)
     RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_awp", "event_zoompistol")
     RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_g3sg1", "event_zoompistol")
+    RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_sg550", "event_zoompistol")
 
     register_concmd("nobel_maps", "cmd_nobel_maps", ACCESS_PUBLIC, "Lists available maps on the server.")
     register_concmd("nobel_pause", "cmd_nobel_pause", ACCESS_ADMIN, "Disable/enable pause.")
