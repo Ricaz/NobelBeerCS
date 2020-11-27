@@ -429,9 +429,20 @@ public event_zoompistol(id) {
     get_user_name(owner_id, owner_name, 63)
     client_print(0, print_chat, "%s bruger zoompistol!1!!", owner_name)
 
-    user_slap(owner_id, random_num(5, 15), 1)
+    new tmp_param[1]
+    tmp_param[0] = owner_id
+    client_print(0, print_console, "$$$ zoompistol event triggered %d", owner_id)
+    set_task(0.1, "zoomslap", 9191, tmp_param, sizeof(tmp_param))
 
     return HAM_HANDLED
+}
+
+public zoomslap(const params[], id) {
+    client_print(0, print_console, "$$$ zoomslap triggered")
+    client_print(0, print_console, "$$$ params %d", params[0])
+    new player = params[0]
+    client_print(0, print_console, "$$$ player_id %d", player)
+    user_slap(player, random_num(9, 18), 1)
 }
 
 public event_round_start() {
@@ -1429,6 +1440,7 @@ public cmd_nobel_serverstart(id, level, cid)
 
     ENABLED = true
     SOUND = true
+	PAUSE = true
     FLASHPROTECTION = true
     ANTIZOOMPISTOL = true
 
