@@ -2,7 +2,7 @@ import Vue from 'vue'
 // import Vuex from 'vuex'
 import VueNativeSock from 'vue-native-websocket'
 
-let socketHost = 'wss://cs.nobelnet.dk:27016'
+let socketHost = 'wss://localhost:27016'
 let socketOptions = { 
 	protocol: 'beercs',
 	format: 'json',
@@ -23,6 +23,7 @@ var app = new Vue({
 		theme: "default",
 		videopromise: undefined,
 		wslog: [],
+		volume: 50,
 		scores: [
 			{
 				name: 'KAJANTHAN KAKATARZAN',
@@ -110,6 +111,10 @@ var app = new Vue({
 
 			this.$refs.audio.src = ''
 			this.$refs.audio.load()
+		},
+		volumeChange: function () {
+			this.$refs.audio.volume = this.volume / 100
+			this.$refs.video.volume = this.volume / 100
 		}
 	}
 })

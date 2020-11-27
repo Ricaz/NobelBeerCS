@@ -13,7 +13,11 @@
 
 				<div class="container" id="app">
 
-					<h2>Status: <pre class="d-inline">{{ status }}</pre></h2>
+					<div class="status">Status: <pre class="d-inline">{{ status }}</pre></div>
+					<div class="volume">
+						<input type="range" ref="volume" id="volume" min="0" max="100" v-model="volume" v-on:change="volumeChange"></input>
+						<label for="volume">Volume</label>
+					</div>
 					<table class="table table-fluid">
 						<thead>
 							<tr>
@@ -39,7 +43,7 @@
 						</tbody>
 					</table>
 					<audio ref="audio" id="audio">Audio not available</audio>
-					<video ref="video"  id="video">Video not available</video>
+					<video ref="video" id="video">Video not available</video>
 				</div>
 				
 			</div>

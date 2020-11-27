@@ -35,3 +35,18 @@ body {
 	margin: 0;
 	overflow: hidden;
 }*/
+
+video {
+	position: fixed;
+	top: 0;
+	left: 0;
+}
+
+.status {
+	display: inline-block;
+}
+.volume {
+	display: inline-block;
+	position: absolute;
+	right: 12pt;
+}
