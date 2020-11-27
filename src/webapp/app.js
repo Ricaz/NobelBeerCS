@@ -2,7 +2,7 @@ import Vue from 'vue'
 // import Vuex from 'vuex'
 import VueNativeSock from 'vue-native-websocket'
 
-let socketHost = 'wss://localhost:8080'
+let socketHost = 'wss://cs.nobelnet.dk:27016'
 let socketOptions = { 
 	protocol: 'beercs',
 	format: 'json',
@@ -19,27 +19,11 @@ Vue.use(VueNativeSock, socketHost, socketOptions)
 var app = new Vue({
 	el: '#app',
 	data: {
-		status: "connected",
+		status: "not connected",
+		theme: "default",
+		videopromise: undefined,
 		wslog: [],
 		scores: [
-			{
-				name: 'lols',
-				kills: 5,
-				teamkills: 1,
-				knifekills: 1,
-				knifed: 0,
-				sips: 35,
-				rounds: 4
-			},
-			{
-				name: 'Kaptajn Haddock',
-				kills: 9,
-				teamkills: 0,
-				knifekills: 9,
-				knifed: 0,
-				sips: 49,
-				rounds: 5
-			},
 			{
 				name: 'KAJANTHAN KAKATARZAN',
 				kills: 0,
@@ -53,14 +37,15 @@ var app = new Vue({
 	},
 	created() {
 		this.$options.sockets.onmessage = this.handleMessage
+		this.$options.sockets.onopen = () => { this.status = 'connected' }
+		this.$options.sockets.onclose = () => { this.status = 'disconnected' }
+		this.$options.sockets.onerror = () => { this.status = 'ERROR' }
 	},
 	methods: {
 		handleMessage: function (msg) {
 			let data = JSON.parse(msg.data)
 			console.log('recieved:', data)
 			this.status = data.cmd
-			this.wslog.push(data)
-			this.playSound(data.playsound)
 
 			switch (data.cmd) {
 				case "kill":
@@ -69,7 +54,28 @@ var app = new Vue({
 				case "round":
 					//this.playSound()
 					break
+				case "roundending":
+				case "unpause":
+					this.stopSound()
+					break
 			}
+
+			this.playMedia(data.media)
+		},
+		playMedia: function (file) {
+			if (!file)
+				return
+			
+			let soundTypes = [ 'wav', 'mp3' ]
+			let videoTypes = [ 'ogg', 'mp4', 'webm' ]
+			let ext = file.split('.').pop()
+
+			if (soundTypes.includes(ext))
+				this.playSound(file)
+			else if (videoTypes.includes(ext))
+				this.playVideo(file)
+			else
+				console.log(`Could not determine if "${ext}" is sound or video.`)
 		},
 		playSound: function (path) {
 			if (!path) {
@@ -78,11 +84,32 @@ var app = new Vue({
 			this.$refs.audio.src = path
 			this.$refs.audio.play()
 		},
-		playVideo: function (e) {
-			let video = 'videos/' + this.videos[Math.floor(Math.random() * videos.length)]
-			console.log('playing video', video)
-			this.$refs.video.src = video
+		playVideo: function (path) {
+			//this.$refs.video.load()
+			//fetch(path)
+			//	.then(response => response.blob())
+			//	.then(blob => {
+			//		this.$refs.video.srcObject = blob
+			//		return this.$refs.video.play()
+			//	})
+			//	.then(_ => {
+			//		console.log('Playing video, beep boop')
+			//	})
+			//	.catch(e => {
+			//		console.log(`Playing video failed? ${e}`)
+			//	})
+
+			this.$refs.video.classList.remove('hidden')
+			this.$refs.video.src = path
 			this.$refs.video.play()
+		},
+		stopSound: function () {
+			this.$refs.video.src = ''
+			this.$refs.video.load()
+			this.$refs.video.classList.add('hidden')
+
+			this.$refs.audio.src = ''
+			this.$refs.audio.load()
 		}
 	}
 })
