@@ -22,10 +22,12 @@ var clientsTcp	= []
 var readyTcp	= false
 var readyWs		= false
 var connID		= 0
+var settings	= {
+	theme: 'default'
+}
 
-const soundsPath = 'dist/assets/sounds/'
+const mediaPath = 'dist/assets/media/'
 var themes		= loadThemes()
-var theme		= 'default'
 
 // Create TCP socket server and set up event handling on it
 var tcp = net.createServer((sock) => {
@@ -35,19 +37,20 @@ var tcp = net.createServer((sock) => {
 
 
 	sock.on('data', (data) => {
-		let cmd = JSON.parse(decodeTCPMessage(data).cmd)
+		let message = decodeTCPMessage(data)
 		log.tcp(`[${host}]: ${data}`)
 
-		if (cmd.cmd === 'theme' && themes.includes(cmd.args[0])) {
-			theme = cmd.args[0]
-			log.tcp(`Switched theme to '${theme}'.`)
+		if (message.cmd === 'theme' && themes.includes(message.args[0])) {
+			log.tcp(`Switched theme from '${settings.theme}' to '${message.args[0]}'.`)
+			settings.theme = message.args[0]
 		}
 
-		cmd.playsound = getSound(cmd);
-		console.log(cmd)
+		if (getMedia(message.cmd)) {
+			message.media = getMedia(message.cmd)
+		}
 		
 		// Forward to WS clients
-		clientsWs.forEach((client) => { client.send(JSON.stringify(cmd)) })
+		clientsWs.forEach((client) => { client.send(JSON.stringify(message)) })
 		log.ws(`Forwarded to ${clientsWs.length} clients.`)
 	}) 
 	sock.on('error', (err) => {
@@ -97,34 +100,41 @@ ws.on('connect', (conn) => {
 function decodeTCPMessage(msg) {
 	let out = {}
 
-	let split = msg.split("|€@!|")
-	return { 'cmd': split.shift(), 'args': split }
+	// If message uses old "encoding", turn into object.
+	// Otherwise, assume it's JSON
+	if (msg.includes("|€@!|")) {
+		let split = msg.split("|€@!|")
+			.filter((i) => { return i != '' })
+		return { 'cmd': split.shift(), 'args': split }
+	} else {
+		return JSON.parse(msg)
+	}
 }
 
-function getSound(cmd) {
-	let sounds = []
+function getMedia(event) {
+	let media = []
 	try {
-		sounds = fs.readdirSync(soundsPath + theme + '/' + cmd.cmd)
-		let sound = sounds[Math.floor(Math.random() * sounds.length)];
-		let path = `sounds/${theme}/${cmd.cmd}/${sound}`
+		media = fs.readdirSync(mediaPath + settings.theme + '/' + event)
+		let random = media[Math.floor(Math.random() * media.length)];
+		let path = `media/${settings.theme}/${event}/${random}`
 		return path
 	} catch (e) {
-		log.tcp(`No sounds found for event ${cmd.cmd}`)
+		log.tcp(`No media found for event '${event}'.`)
 		return false
 	}
 }
 
 function loadThemes() {
-	let files = fs.readdirSync(soundsPath)
-	let tmp = []
+	let files = fs.readdirSync(mediaPath)
+	let themes = []
 	files.forEach((file) => {
-		let stats = fs.statSync(soundsPath + file)
+		let stats = fs.statSync(mediaPath + file)
 		if (stats.isDirectory()) {
-			tmp.push(file)
+			themes.push(file)
 		}
 	})
 
-	return tmp
+	return themes
 }
 
 // Helper functions

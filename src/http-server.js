@@ -40,15 +40,26 @@ var server = http.createServer(options, (req, res) => {
 
 	var ext = path.parse(filepath).ext
 	if (map[ext]) { 
-		res.setHeader('Content-Type', `${map[ext]}; charset=utf-8`);
+		res.setHeader('Content-Type', `${map[ext]}; charset=UTF-8`);
 	} else {
-		res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+		res.setHeader('Content-Type', 'text/plain; charset=UTF-8');
 	}
 
 	fs.exists(filepath, (exists) => {
 		if (!exists) {
 			res.errorCode = 404
-			res.end(`Nope!\n${filepath}`)
+			res.end(`File '${filepath}' not found.`)
+			return
+		}
+
+		// if video
+		if (map[ext] && map[ext].includes('video')) {
+			fileStream = fs.createReadStream(filepath);
+			fileStream.on('error', (e) => log.http(`Error reading '${filepath}': ${e}`))
+			fileStream.on('data', (chunk) => res.write(chunk))
+			fileStream.on('close', (chunk) => res.end())
+			log.http(`Streamed '${req.url}' to ${req.connection.remoteAddress}.`)
+			return
 		}
 
 		fs.readFile(filepath, function(err, data){
