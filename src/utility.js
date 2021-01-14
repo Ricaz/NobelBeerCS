@@ -34,7 +34,7 @@ class Player {
 			if (err) {
 				if (err.code == 'ENOENT') {
 					// console.log(`[MAIN] No sounds for event "${name}"`)
-				} else { 
+				} else {
 					console.log(`[SND]  ${err}`)
 				}
 				return
@@ -45,7 +45,7 @@ class Player {
 			// console.log(`[MAIN] Playing ${fullPath}`)
 			fs.exists(fullPath, (exists) => {
 				if (exists) {
-					console.log(`[SND]  Playing ${name}/${file}`);
+					console.log(`[SND]  Playing ${name}/${file}`)
 					exec(`${process.env.PLAYER} ${fullPath}`, (err, stdout, stderr) => {
 						if (err) {
 							console.log(`[SND]  ${err}`)
