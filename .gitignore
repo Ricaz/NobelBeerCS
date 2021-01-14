@@ -1,6 +1,7 @@
 node_modules/
 release/
 .npm/
+.idea/
 
 dist/assets/js/bundle.js
 
