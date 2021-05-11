@@ -32,7 +32,7 @@ var themes		= loadThemes()
 // Create TCP socket server and set up event handling on it
 var tcp = net.createServer((sock) => {
 	var host = exIP(sock.remoteAddress)
-	log.tcp('Client connected from ' + host) 
+	log.tcp('Client connected from ' + host)
 	sock.setEncoding('utf8')
 
 
@@ -52,7 +52,7 @@ var tcp = net.createServer((sock) => {
 		// Forward to WS clients
 		clientsWs.forEach((client) => { client.send(JSON.stringify(message)) })
 		log.ws(`Forwarded to ${clientsWs.length} clients.`)
-	}) 
+	})
 	sock.on('error', (err) => {
 		log.tcp(err)
 	})
@@ -115,7 +115,7 @@ function getMedia(event) {
 	let media = []
 	try {
 		media = fs.readdirSync(mediaPath + settings.theme + '/' + event)
-		let random = media[Math.floor(Math.random() * media.length)];
+		let random = media[Math.floor(Math.random() * media.length)]
 		let path = `media/${settings.theme}/${event}/${random}`
 		return path
 	} catch (e) {
