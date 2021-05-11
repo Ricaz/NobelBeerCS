@@ -36,13 +36,13 @@ var server = http.createServer(options, (req, res) => {
 		'.mp3': 'audio/mpeg',
 		'.svg': 'image/svg+xml',
 		'.pdf': 'application/pdf',
-	};
+	}
 
 	var ext = path.parse(filepath).ext
-	if (map[ext]) { 
-		res.setHeader('Content-Type', `${map[ext]}; charset=UTF-8`);
+	if (map[ext]) {
+		res.setHeader('Content-Type', `${map[ext]}; charset=UTF-8`)
 	} else {
-		res.setHeader('Content-Type', 'text/plain; charset=UTF-8');
+		res.setHeader('Content-Type', 'text/plain; charset=UTF-8')
 	}
 
 	fs.exists(filepath, (exists) => {
@@ -54,7 +54,7 @@ var server = http.createServer(options, (req, res) => {
 
 		// if video
 		if (map[ext] && map[ext].includes('video')) {
-			fileStream = fs.createReadStream(filepath);
+			fileStream = fs.createReadStream(filepath)
 			fileStream.on('error', (e) => log.http(`Error reading '${filepath}': ${e}`))
 			fileStream.on('data', (chunk) => res.write(chunk))
 			fileStream.on('close', (chunk) => res.end())
@@ -72,7 +72,7 @@ var server = http.createServer(options, (req, res) => {
 				res.end(data)
 				log.http(`Served '${req.url}' to ${req.connection.remoteAddress}.`)
 			}
-		});
+		})
 	})
 
 })
