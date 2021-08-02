@@ -12,15 +12,19 @@ function rng(min, max) {
 
 class Logger {
 	tcp(msg) {
-		console.log('[TCP]  ' + msg)
+		console.log('[TCP]   ' + msg)
 	}
 
 	ws(msg) {
-		console.log('[WS]   ' + msg)
+		console.log('[WS]    ' + msg)
 	}
 
 	http(msg) {
-		console.log('[HTTP] ' + msg)
+		console.log('[HTTP]  ' + msg)
+	}
+
+	score(msg) {
+		console.log('[SCORE] ' + msg)
 	}
 }
 

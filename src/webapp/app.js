@@ -2,7 +2,7 @@ import Vue from 'vue'
 // import Vuex from 'vuex'
 import VueNativeSock from 'vue-native-websocket'
 
-let socketHost = 'wss://cs.nobelnet.dk:27016'
+let socketHost = 'wss://localhost:27016'
 let socketOptions = { 
 	protocol: 'beercs',
 	format: 'json',
@@ -46,9 +46,11 @@ var app = new Vue({
 		handleMessage: function (msg) {
 			let data = JSON.parse(msg.data)
 			console.log('recieved:', data)
-			this.status = data.cmd
 
 			switch (data.cmd) {
+				case "scoreboard":
+					this.scores = data.args[0].scores
+					break
 				case "kill":
 					// scoreboard.handleKill('STEAMID:001', 'STEAMID:002')
 					break

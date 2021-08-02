@@ -2,7 +2,6 @@ var path = require('path');
 
 module.exports = {
 	mode: 'development',
-	watch: true,
 	entry: './src/webapp/app.js',
 	module: {
 		rules: [
