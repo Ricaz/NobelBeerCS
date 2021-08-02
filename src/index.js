@@ -14,7 +14,7 @@ const fs	= require('fs')
 // Load custom modules
 const http	= require('./http-server')
 const log	= require('./utility').log
-const player = require('./utility').player
+const scoretracker = require('./scoretracker')
 
 // Global vars
 var clientsWs	= []
@@ -29,29 +29,42 @@ var settings	= {
 const mediaPath = 'dist/assets/media/'
 var themes		= loadThemes()
 
+var tracker = new scoretracker()
+
 // Create TCP socket server and set up event handling on it
 var tcp = net.createServer((sock) => {
-	var host = exIP(sock.remoteAddress)
-	log.tcp('Client connected from ' + host)
 	sock.setEncoding('utf8')
 
+	sock.on('connect', (sock) => {
+		log.tcp('Mod connected!')
+	})
 
 	sock.on('data', (data) => {
 		let message = decodeTCPMessage(data)
-		log.tcp(`[${host}]: ${data}`)
+		log.tcp(`${message.cmd}: ${JSON.stringify(message.args)}`)
 
-		if (message.cmd === 'theme' && themes.includes(message.args[0])) {
-			log.tcp(`Switched theme from '${settings.theme}' to '${message.args[0]}'.`)
-			settings.theme = message.args[0]
-		}
+		// Scoreboard
+		// TODO: hmmmmm
+		tracker.handleEvent(message)
+		console.log(tracker.getScoreboard())
+		if (tracker.running) {
+			var fullState = { cmd: 'scoreboard', args: [ tracker.getScoreboard() ] }
+			clientsWs.forEach((client) => { client.send(JSON.stringify(fullState)) })
 
-		if (getMedia(message.cmd)) {
-			message.media = getMedia(message.cmd)
+			// Handle media
+			if (message.cmd === 'theme' && themes.includes(message.args[0])) {
+				log.tcp(`Switched theme from '${settings.theme}' to '${message.args[0]}'.`)
+				settings.theme = message.args[0]
+			}
+
+			if (getMedia(message.cmd)) {
+				message.media = getMedia(message.cmd)
+			}
+
+			// Forward to WS clients
+			clientsWs.forEach((client) => { client.send(JSON.stringify(message)) })
+			log.ws(`Forwarded to ${clientsWs.length} clients.`)
 		}
-		
-		// Forward to WS clients
-		clientsWs.forEach((client) => { client.send(JSON.stringify(message)) })
-		log.ws(`Forwarded to ${clientsWs.length} clients.`)
 	})
 	sock.on('error', (err) => {
 		log.tcp(err)
@@ -86,6 +99,12 @@ ws.on('connect', (conn) => {
 	conn.id = connID++
 	clientsWs[conn.id] = conn
 	log.ws(`[${conn.id}] Connected from ${conn.socket.remoteAddress}.`)
+
+	if (tracker.running) {
+		log.ws('Sending full state.')
+		var fullState = { cmd: 'scoreboard', args: [ tracker.getScoreboard() ] }
+		conn.send(JSON.stringify(fullState))
+	}
 
 	conn.on('message', (data) => {
 		log.ws(`[${conn.id}]: ${data}`)
@@ -143,10 +162,4 @@ function rng(min, max) {
 	min = Math.floor(min)
 	max = Math.floor(max) + 1
 	return Math.floor(Math.random() * (max - min) + min)
-}
-
-// Extract IP from socket.remoteAddress
-function exIP (host) {
-	host = host.split(':')
-	return host[host.length - 1]
 }
