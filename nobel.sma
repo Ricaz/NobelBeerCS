@@ -13,6 +13,7 @@
 #include <cellarray>
 #include <regex>
 #include <nvault>
+#include <json>
 
 #pragma ctrlchar '\'
 #define PLUGIN "Nobel Beer CS"
@@ -32,8 +33,6 @@
 #define MAP_TYPE_AS "as"
 #define MAP_TYPE_AIM "aim"
 #define MAP_TYPE_AWP "awp"
-
-new bool:USE_JSON = false
 
 new bool:ENABLED = false
 new bool:PAUSE = false
@@ -87,6 +86,7 @@ public plugin_init()
     register_event("DeathMsg", "hook_death", "a")
     register_event("30", "map_change", "a")
     register_event("TeamInfo", "fix_sip_count", "a")
+    register_event("TeamInfo", "player_switched_teams", "a")
     register_event("CurWeapon", "set_user_speed", "be") 
     register_event("HideWeapon", "set_user_speed", "be") 
     register_event("TextMsg", "hostages_rescued", "a", "2&#All_Hostages_R") 
@@ -190,7 +190,7 @@ public plugin_init()
     log_amx("Config: nobel_server_port=%d", nobel_server_port)
     log_amx("Config: nobel_db_host=%s", nobel_db_host)
     log_amx("Config: nobel_db_user=%s", nobel_db_user)
-    log_amx("Config: nobel_db_pass=%s", nobel_db_pass)
+    log_amx("Config: nobel_db_pass=", nobel_db_pass)
     log_amx("Config: nobel_db_database=%s", nobel_db_database)
 
     // initialize DB conn
@@ -211,11 +211,11 @@ public plugin_init()
     if (retrieve_data_int(VAULT_KEY_MAPEND) == 1) {
         log_amx("Starting timer for notifying pause end")
         set_task(map_pause_time, "mapend_pause_end", 4132, "", 0, "a", 1)
-	}
+    }
 }
 
 public plugin_end() {
-	close_vault()
+    close_vault()
 }
 
 public open_vault() {
@@ -412,9 +412,10 @@ public event_screenfade(id) {
 
 public event_new_round() {
 
-    log_amx("CS event: new_round");
-    if (!ENABLED)
+    if (!ENABLED) {
+        log_amx("CS event: new_round (mod DISABLED)");
         return
+    }
 
     log_amx("CS event: new_round (mod ENABLED)");
     remove_task(7748)
@@ -446,11 +447,11 @@ public zoomslap(const params[], id) {
 }
 
 public event_round_start() {
-
     log_amx("CS event: round_start");
     if (!ENABLED)
         return
 
+    send_event("roundstart")
     log_amx("CS event: round_start (mod ENABLED)");
     freezetime = false
     defused = false
@@ -878,7 +879,7 @@ public hook_death()
     // EVENT CONTROL
     if (suicide)
     {
-        send_event("suicide")
+        send_event("suicide", victimsteamid)
         if (PAUSE)
         {
             pause_game()
@@ -886,20 +887,20 @@ public hook_death()
     }
     else if (team_kill)
     {
-        send_event("tk", killername, victimname)
-        client_print(0, print_chat, "Bottoms up, %s!", killername)
+        send_event("tk", killersteamid, victimsteamid)
+        client_print(0, print_chat, "Kan du bunde, %s?", killername)
         pause_or_freeze_player(killer)
     }
     else if (KNIFE && !knifed && !grenade)
     {
         // In knife rounds we do NOT accept to be killed by a gun!
-        send_event("kniferound", killername)
+        send_event("kniferound", killersteamid)
         client_print(0, print_chat, "Bottoms up, %s!", killername)
         pause_or_freeze_player(killer)
     }
     else if (knifed && !KNIFE)
     {
-        send_event("knife", killername, victimname)
+        send_event("knife", killersteamid, victimsteamid)
         client_print(0, print_chat, "%s got KNIFED!", victimname)
         pause_or_freeze_player(killer)
     }
@@ -911,13 +912,17 @@ public hook_death()
     else if (headshot)
     {
         playAlone = true
-        send_event(worstplayer ? "worstplayer" : "headshot")
+        if (worstplayer)
+            send_event("worstplayer")
+        send_event("headshot", killersteamid, victimsteamid)
         freeze_player(killer)
     }
     else
     {
         playAlone = true
-        send_event(worstplayer ? "worstplayer" : "kill")
+        if (worstplayer)
+            send_event("worstplayer")
+        send_event("kill", killersteamid, victimsteamid)
         freeze_player(killer)
     }
 
@@ -1359,32 +1364,180 @@ public player_spawned(id)
     }
 }
 
-stock send_event(cmd[], name[] = "", name2[] = "")
+// Triggered when TeamInfo changes
+public player_switched_teams() 
 {
-    if (ENABLED && SOUND) {
-        send_event_always(cmd, name, name2)
-    }
+    new id = read_data(1)
+    new team[16]
+    read_data(2, team, charsmax(team))
+
+    new oldTeam[16]
+    get_user_team(id, oldTeam, charsmax(oldTeam))
+
+    new playerName[64]
+    new steamID[32]
+    get_user_name(id, playerName, charsmax(playerName))
+    get_user_authid(id, steamID, charsmax(steamID))
+
+    new JSON:obj = json_init_object()
+    new JSON:args = json_init_object()
+    json_object_set_string(obj, "cmd", "playerteam")
+
+    json_object_set_string(args, "name", playerName)
+    json_object_set_string(args, "id", steamID)
+    json_object_set_string(args, "team", team)
+
+    json_object_set_value(obj, "args", args)
+
+    new buf[128]
+    json_serial_to_string(obj, buf, charsmax(buf))
+
+    json_free(args)
+    json_free(obj)
+
+    log_amx("CS event: %s switched to %s", playerName, team)
+    log_amx("Sending: %s", buf)
+    send_json(buf)
 }
 
-stock send_event_always(cmd[], killer[] = "", victim[] = "")
+// Triggered when client receives STEAMID
+public client_authorized(id)
 {
+    new JSON:obj = json_init_object()
+    json_object_set_string(obj, "cmd", "playerjoined")
+
+    new JSON:args = json_init_object()
+    new playerName[64]
+    new steamID[32]
+    new team[16]
+    get_user_name(id, playerName, charsmax(playerName))
+    get_user_authid(id, steamID, charsmax(steamID))
+    get_user_team(id, team, charsmax(team))
+    json_object_set_string(args, "id", steamID)
+    json_object_set_string(args, "name", playerName)
+    json_object_set_string(args, "team", team)
+
+    json_object_set_value(obj, "args", args)
+
+    new buf[256]
+    json_serial_to_string(obj, buf, charsmax(buf))
+
+    json_free(args)
+    json_free(obj)
+
+    log_amx("Joined event: %s", buf)
+    send_json_always(buf)
+}
+
+public client_disconnected(id)
+{
+    new JSON:obj = json_init_object()
+    json_object_set_string(obj, "cmd", "playerleft")
+
+    new JSON:args = json_init_object()
+    new playerName[64]
+    new steamID[32]
+    get_user_name(id, playerName, charsmax(playerName))
+    get_user_authid(id, steamID, charsmax(steamID))
+    json_object_set_string(args, "id", steamID)
+    json_object_set_string(args, "name", playerName)
+
+    json_object_set_value(obj, "args", args)
+
+    new buf[256]
+    json_serial_to_string(obj, buf, charsmax(buf))
+
+    json_free(args)
+    json_free(obj)
+
+    log_amx("Playerleft event: %s", buf)
+    send_json_always(buf)
+}
+
+stock send_players()
+{
+    new Players[32]
+    new playerCount, i
+    new JSON:playersJson = json_init_object()
+    new JSON:argsJson = json_init_array()
+    json_object_set_string(playersJson, "cmd", "playersync")
+    get_players(Players, playerCount, "c") 
+    for (i=0; i<playerCount; i++)
+    {
+        new JSON:playerObject = json_init_object()
+        new playerName[64]
+        new steamID[32]
+        new team[32]
+        get_user_name(Players[i], playerName, charsmax(playerName))
+        get_user_authid(Players[i], steamID, charsmax(steamID))
+        get_user_team(Players[i], team, charsmax(team))
+        json_object_set_string(playerObject, "id", steamID)
+        json_object_set_string(playerObject, "name", playerName)
+        json_object_set_string(playerObject, "team", team)
+        json_array_append_value(argsJson, playerObject)
+    }
+
+    json_object_set_value(playersJson, "args", argsJson)
+
+	// Can't figure out max buffer length. 2^12 is too big I think..?
+    new buf[3072]
+    json_serial_to_string(playersJson, buf, charsmax(buf))
+
+    log_amx("Message length: %d", strlen(buf))
+    log_amx("PLAYERS: %s", buf)
+
+    json_free(argsJson)
+    json_free(playersJson)
+
+    send_json_always(buf)
+}
+
+stock send_json(event[])
+{
+    if (ENABLED && SOUND) {
+        send_json_always(event)
+    }
+}
+stock send_json_always(event[]) {
     new sock
     new error
     sock = socket_open(nobel_server_host, nobel_server_port, SOCKET_TCP, error)
     if (!error)
     {
-        new buf[256]
-        if (USE_JSON) {
-            format(buf, 256, "{\"event\":\"%s\",\"killer\":\"%s\",\"victim\":\"%s\"}", cmd, killer, victim)
-        } else {
-            format(buf, 256, "%s|€@!|%s|€@!|%s", cmd, killer, victim)
-        }
-        new len = strlen(buf)
-    
-        log_amx("Sending event: %s (%s %s)", cmd, killer, victim)
-        socket_send(sock, buf, len)
+        socket_send(sock, event, strlen(event))
         socket_close(sock)
     }
+}
+
+stock send_event(cmd[], arg1[] = "", arg2[] = "")
+{
+    if (ENABLED && SOUND) {
+        send_event_always(cmd, arg1, arg2)
+    }
+}
+stock send_event_always(cmd[], arg1[] = "", arg2[] = "")
+{
+    new JSON:eventJson = json_init_object()
+    new JSON:argsJson = json_init_array()
+    json_object_set_string(eventJson, "cmd", cmd)
+    if (arg1[0]) {
+        json_array_append_string(argsJson, arg1)
+        if (arg2[0]) {
+            json_array_append_string(argsJson, arg2)
+        }
+        json_object_set_value(eventJson, "args", argsJson)
+    }
+
+	// Can't figure out max buffer length. 2^12 is too big I think..?
+    new buf[512]
+    json_serial_to_string(eventJson, buf, charsmax(buf))
+
+    log_amx("Basic event: %s", buf)
+
+    json_free(argsJson)
+    json_free(eventJson)
+
+    send_json_always(buf)
 }
 
 public cmd_nobel(id, level, cid)
@@ -1410,6 +1563,7 @@ public cmd_nobel_start(id, level, cid)
 
     round_count = 0
     set_state(MOD_STATE_STARTING)
+    send_players()
 
     // Load map type specific config
     new map_type_cfg[22]
@@ -1440,7 +1594,7 @@ public cmd_nobel_serverstart(id, level, cid)
 
     ENABLED = true
     SOUND = true
-	PAUSE = true
+    PAUSE = true
     FLASHPROTECTION = true
     ANTIZOOMPISTOL = true
 
@@ -1463,7 +1617,7 @@ public cmd_nobel_stop(id, level, cid)
     ENABLED = false
     remove_task(1000)
     server_cmd("exec stop.cfg")
-    client_print(0, print_console, "Nobel Beer CS disabled!")	
+    client_print(0, print_console, "Nobel Beer CS disabled!")
     set_state(MOD_STATE_STOPPED)
     return PLUGIN_HANDLED;
 }
