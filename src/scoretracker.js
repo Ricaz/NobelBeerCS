@@ -6,11 +6,13 @@ class Player {
 	constructor(args) {
 		this.id = args.id
 		this.name = args.name
+		this.team = args.team
 		this.kills = 0
 		this.deaths = 0
 		this.teamkills = 0
 		this.knifekills = 0
 		this.knifed = 0
+		this.suicides = 0
 		this.sips = 0
 		this.rounds = 0
 		this.active = true
@@ -19,7 +21,6 @@ class Player {
 
 class Tracker {
 	constructor(args) {
-		// TODO: Load scoreboard from file/db
 		this.startTime
 		this.endTime
 		this.running = false
@@ -29,18 +30,18 @@ class Tracker {
 		this.board = new Scoreboard()
 		this.loadScoreboard()
 
-		// debug
-		this.board.addPlayer('a', 'ræv')
-		this.board.addPlayer('b', 'abe')
+		// TODO: debug
+		//this.board.addPlayer('a', 'ræv')
+		//this.board.addPlayer('b', 'abe')
 	}
 
 	loadScoreboard() {
 		var path = `${process.env.TMPDIR}/*.json`
-		const newestFile = glob.sync(path)
-			.map(name => ({name, ctime: fs.statSync(name).ctime}))
-			.sort((a, b) => b.ctime - a.ctime)[0].name
+		var files = glob.sync(path)
 
-		if (newestFile) {
+		if (files.length > 0) {
+			const newestFile = files.map(name => ({name, ctime: fs.statSync(name).ctime}))
+				.sort((a, b) => b.ctime - a.ctime)[0].name
 			const loaded = JSON.parse(fs.readFileSync(newestFile, { encoding: 'utf8' }))
 			if (! loaded.endTime && loaded.startTime > Date.now() - (60000 *  70)) {
 				log.score(`Loaded game with start time ${new Date(loaded.startTime).toLocaleTimeString('en-GB')} from ${newestFile}.`)
@@ -71,17 +72,46 @@ class Tracker {
 			this.startTime = Date.now()
 			this.running = true
 			this.board.reset()
-			this.board.handleNewRound()
 		}
 
-		// TODO: don't do scoreboard stuff unless started
-		//else if (! this.running)
-		//	return
+		else if (cmd == 'playerjoined')
+			this.board.addPlayer(args.id, args.name, args.team)
 
-		else if (cmd == 'round')
+		else if (cmd == 'playerleft')
+			this.board.removePlayer(args.id)
+
+		else if (cmd == 'playerteam')
+			this.board.switchTeam(args.id, args.name, args.team)
+
+		else if (cmd == 'playersync') {
+			// Deactivate players not on server
+			this.board.players.forEach((localPlayer) => {
+				var existsRemote = false
+				args.forEach((remotePlayer) => {
+					if (localPlayer.id == remotePlayer.id)
+						existsRemote = true
+				})
+
+				if (!existsRemote && localPlayer.active == true)
+					this.board.removePlayer(localPlayer.id)
+			});
+
+			// Add/update players from server
+			args.forEach((remotePlayer) => {
+				this.board.addPlayer(remotePlayer.id, remotePlayer.name, remotePlayer.team)
+			})
+
+			console.log("Players:", this.board.players)
+		}
+
+		// Don't do scoreboard stuff unless started
+		else if (! this.running)
+			return
+
+		else if (cmd == 'roundstart')
 			this.board.handleNewRound()
 
-		else if (cmd == 'kill')
+		else if (cmd == 'kill' || cmd == 'headshot')
 			this.board.handleKill(args[0], args[1])
 
 		else if (cmd == 'knife')
@@ -93,38 +123,9 @@ class Tracker {
 		else if (cmd == 'suicide')
 			this.board.handleSuicide(args[0])
 
-		else if (cmd == 'player-joined')
-			this.board.addPlayer(args[0], args[1])
 
-		else if (cmd == 'player-left')
-			this.board.removePlayer(args[0])
-
-		else if (cmd == 'playersync') {
-			args.forEach((serverPlayer) => {
-				let exists = false
-				this.players.forEach((localPlayer) => {
-					if (serverPlayer.steamid == localPlayer.steamid)
-						exists = true
-				})
-				if (exists) {
-					this.addPlayer(serverPlayer.steamid, serverPlayer.name)
-				}
-			})
-
-			this.players.forEach((localPlayer) => {
-				let exists = true
-				serverPlayers.forEach((serverPlayer) => {
-					if (serverPlayer.steamid == localPlayer.steamid)
-						exists = false
-				})
-
-				if (! exists)
-					this.removePlayer(localPlayer.steamid)
-			})
-		}
-
-		else if (cmd == 'mapend') {
-			log.score('ROUND ENDING')
+		else if (cmd == 'mapchange' && this.running) {
+			log.score(`ROUND ENDING! Switching to ${args[0]}...`)
 			this.endTime = Date.now()
 			this.running = false
 
@@ -145,20 +146,22 @@ class Tracker {
 
 		// TODO: remove
 		else
-			log.score("Unknown event: " + JSON.stringify(message))
+			log.score(`Unknown cmd: ${cmd}, event: ${JSON.stringify(message)}`)
 
 
 		// TODO: write scoreboard to temp file
-		var tmpdir = process.env.TMPDIR
-		if (! fs.existsSync(tmpdir))
-			fs.mkdirSync(tmpdir)
-		var filename = `${tmpdir}/${this.startTime}.json`
-		fs.writeFile(filename, JSON.stringify(this.getScoreboard()), { flag: 'w' }, (err) => {
-			if (err)
-				log.score(`Failed to write scoreboard to ${filename}: ${err.message}`)
-			else 
-				log.score(`Wrote temp scoreboard to ${filename}`)
-		})
+		if (this.running) {
+			var tmpdir = process.env.TMPDIR
+			if (! fs.existsSync(tmpdir))
+				fs.mkdirSync(tmpdir)
+			var filename = `${tmpdir}/${this.startTime}.json`
+			fs.writeFile(filename, JSON.stringify(this.getScoreboard()), { flag: 'w' }, (err) => {
+				if (err)
+					log.score(`Failed to write scoreboard to ${filename}: ${err.message}`)
+				else 
+					log.score(`Wrote temp scoreboard to ${filename}`)
+			})
+		}
 	}
 }
 
@@ -168,23 +171,47 @@ class Scoreboard {
 	}
 
 	// Add player
-	// If ID exists, set name
-	addPlayer(id, name) {
+	// If ID exists, update name/team
+	addPlayer(id, name, team) {
+		if (! team)
+			team = "UNASSIGNED"
 		var player = this.getPlayer(id)
 		if (player) {
-			player.name = name
+			if (player.name != name) {
+				player.name = name
+				log.score(`Rename "${player.name}" => "${name}"`)
+			}
+			if (player.team != team) {
+				player.team = team
+				log.score(`Team switch: "${name}" => ${team}`)
+			}
 			player.active = true
 			return
 		} else {
-			var player = new Player({ id: id, name: name })	
+			log.score(`Adding player "${name}"`)
+			var player = new Player({ id: id, name: name, team: team })
 			this.players.push(player)
+		}
+	}
+
+	switchTeam(id, name, team) {
+		var player = this.getPlayer(id)
+		if (! player) {
+			log.score(`Tried to switch team of "${name}", but player doesn't exist`)
+			return
+		}
+		if (player.team != team) {
+			player.team = team
+			log.score(`Team switch: "${name}" => ${team}`)
 		}
 	}
 
 	removePlayer(id) {
 		var player = this.getPlayer(id)
-		if (player)
+		if (player) {
+			log.score(`Removing player "${player.name}"`)
 			player.active = false
+		}
 	}
 
 	getPlayer(steamid) {
@@ -223,12 +250,16 @@ class Scoreboard {
 			killer.sips   += 2
 			victim.deaths += 1
 			victim.sips   += 1
+		} else {
+			log.score(`Kill error: Couldn't find killer (${killerID}) or victim (${victimID})`)
 		}
 	}
 
 	handleSuicide(playerID) {
 		var player = this.getPlayer(playerID)
 		if (player) {
+			log.score(`Player "${player.name}" committed suicide!`)
+			player.suicides += 1
 			player.deaths += 1
 			player.sips   += 10
 		}
@@ -258,11 +289,17 @@ class Scoreboard {
 			player.active = false
 	}
 
+	handleMapChange(map) {
+		log.score(`Chaning map to ${map}`)
+	}
+
 	reset() {
 		this.players.forEach(function (player) {
 			player.kills = 0
+			player.deaths = 0
 			player.teamkills = 0
 			player.knifekills = 0
+			player.suicides = 0
 			player.knifed = 0
 			player.sips = 0
 			player.rounds = 0

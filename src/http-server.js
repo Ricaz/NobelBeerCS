@@ -5,8 +5,8 @@ const fs = require('fs')
 const log = require('./utility').log
 
 const options = {
-	key: fs.readFileSync('tls/localhost-key.pem'),
-	cert: fs.readFileSync('tls/localhost-cert.pem'),
+	key: fs.readFileSync('tls/key.pem'),
+	cert: fs.readFileSync('tls/cert.pem'),
 }
 
 var server = http.createServer(options, (req, res) => {
