@@ -8,40 +8,68 @@
 <body>
 	<div class="container-fluid">
 		<div class="row">
-			<div class="col-12">
-				<h1 class="text-center">Beer CS</h1>
-
+			<div class="col-12 pt-4">
 				<div class="container" id="app">
 
 					<div class="status">Status: <pre class="d-inline">{{ status }}</pre></div>
 					<div class="volume">
-						<input type="range" ref="volume" id="volume" min="0" max="100" v-model="volume" v-on:change="volumeChange"></input>
+						<input type="range" name="volume" ref="volume" step="5" id="volume" min="0" max="100" v-model="volume" v-on:change="volumeChange"></input>
 						<label for="volume">Volume</label>
 					</div>
-					<table class="table table-fluid">
-						<thead>
-							<tr>
-								<th>Name</th>
-								<th>Kills</th>
-								<th>TKs</th>
-								<th>Knifekills</th>
-								<th>Knifed</th>
-								<th>Sips</th>
-								<th>Rounds</th>
-							</tr>
-						</thead>
-						<tbody>
-							<tr v-for="player in scores">
-								<td>{{ player.name }}</td>
-								<td>{{ player.kills }}</td>
-								<td>{{ player.teamkills }}</td>
-								<td>{{ player.knifekills }}</td>
-								<td>{{ player.knifed }}</td>
-								<td>{{ player.sips }}</td>
-								<td>{{ player.rounds }}</td>
-							</tr>
-						</tbody>
-					</table>
+					<div class="scores-active pb-5">
+						<h1 class="text-center">Scoreboard</h1>
+						<table class="table table-fluid">
+							<thead>
+								<tr>
+									<th>Name</th>
+									<th>K/D</th>
+									<th>Knife K/D</th>
+									<th>TKs</th>
+									<th>Suicides</th>
+									<th>Sips</th>
+									<th>Rounds</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr v-for="player in activeScores">
+									<td>{{ player.name }}</td>
+									<td><b>{{ player.kills }}</b> / {{ player.deaths }}</td>
+									<td><b>{{ player.knifekills }}</b> / {{ player.knifed }}</td>
+									<td>{{ player.teamkills }}</td>
+									<td>{{ player.suicides }}</td>
+									<td>{{ player.sips }}</td>
+									<td>{{ player.rounds }}</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
+					<div class="scores-inactive mt-5">
+						<h1 class="text-center">Inactive</h1>
+						<table class="table table-fluid">
+							<thead>
+								<tr>
+									<th>Name</th>
+									<th>K/D</th>
+									<th>Knife K/D</th>
+									<th>TKs</th>
+									<th>Suicides</th>
+									<th>Sips</th>
+									<th>Rounds</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr v-for="player in inactiveScores">
+									<td>{{ player.name }}</td>
+									<td><b>{{ player.kills }}</b> / {{ player.deaths }}</td>
+									<td><b>{{ player.knifekills }}</b> / {{ player.knifed }}</td>
+									<td>{{ player.teamkills }}</td>
+									<td>{{ player.suicides }}</td>
+									<td>{{ player.sips }}</td>
+									<td>{{ player.rounds }}</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
 					<audio ref="audio" id="audio">Audio not available</audio>
 					<video ref="video" id="video">Video not available</video>
 				</div>

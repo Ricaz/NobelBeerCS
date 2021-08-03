@@ -23,6 +23,11 @@ table, div {
 	height: 100%;
 }
 
+body {
+	margin: 0;
+	overflow: hidden;
+}*/
+
 .hidden {
 	display: none;
 }
@@ -31,10 +36,9 @@ table, div {
 	display: block;
 }
 
-body {
-	margin: 0;
-	overflow: hidden;
-}*/
+.scores-inactive {
+	opacity: 30%;	
+}
 
 video {
 	position: fixed;

@@ -2,7 +2,7 @@ import Vue from 'vue'
 // import Vuex from 'vuex'
 import VueNativeSock from 'vue-native-websocket'
 
-let socketHost = 'wss://localhost:27016'
+let socketHost = 'wss://cs.nobelnet.dk:27016'
 let socketOptions = { 
 	protocol: 'beercs',
 	format: 'json',
@@ -23,7 +23,7 @@ var app = new Vue({
 		theme: "default",
 		videopromise: undefined,
 		wslog: [],
-		volume: 50,
+		volume: 30,
 		scores: [
 			{
 				name: 'KAJANTHAN KAKATARZAN',
@@ -35,6 +35,14 @@ var app = new Vue({
 				rounds: 19
 			},
 		]
+	},
+	computed: {
+		activeScores() {
+			return this.scores.filter(player => player.active == true)
+		},
+		inactiveScores() {
+			return this.scores.filter(player => player.active == false)
+		}
 	},
 	created() {
 		this.$options.sockets.onmessage = this.handleMessage
