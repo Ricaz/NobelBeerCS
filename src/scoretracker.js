@@ -100,8 +100,6 @@ class Tracker {
 			args.forEach((remotePlayer) => {
 				this.board.addPlayer(remotePlayer.id, remotePlayer.name, remotePlayer.team)
 			})
-
-			console.log("Players:", this.board.players)
 		}
 
 		// Don't do scoreboard stuff unless started
@@ -124,7 +122,7 @@ class Tracker {
 			this.board.handleSuicide(args[0])
 
 
-		else if (cmd == 'mapchange' && this.running) {
+		else if (cmd == 'mapchange') {
 			log.score(`ROUND ENDING! Switching to ${args[0]}...`)
 			this.endTime = Date.now()
 			this.running = false
@@ -219,7 +217,7 @@ class Scoreboard {
 	}
 
 	getScores() {
-		return this.players.sort((a, b) => (a.sips > b.sips) ? 1 : -1)
+		return this.players.sort((a, b) => (a.sips < b.sips) ? 1 : -1)
 	}
 
 	handleNewRound() {
