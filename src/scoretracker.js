@@ -222,8 +222,10 @@ class Scoreboard {
 
 	handleNewRound() {
 		this.players.forEach(function (player) {
-			player.sips++
-			player.rounds++
+			if (player.active) {
+				player.sips++
+				player.rounds++
+			}
 		})
 	}
 
