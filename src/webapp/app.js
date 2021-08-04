@@ -24,17 +24,7 @@ var app = new Vue({
 		videopromise: undefined,
 		wslog: [],
 		volume: 30,
-		scores: [
-			{
-				name: 'KAJANTHAN KAKATARZAN',
-				kills: 0,
-				teamkills: 6,
-				knifekills: 9,
-				knifed: 32,
-				sips: 291,
-				rounds: 19
-			},
-		]
+		scores: []
 	},
 	computed: {
 		activeScores() {
