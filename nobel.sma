@@ -128,6 +128,7 @@ public plugin_init()
     register_concmd("nobel_knife_now", "cmd_nobel_knife_now", ACCESS_ADMIN, "Toggle the knife functionality NOW.")
     register_concmd("nobel_flashprotection", "cmd_nobel_flashprotection", ACCESS_ADMIN, "Toggle flash protection")
     register_concmd("nobel_antizoompistol", "cmd_nobel_antizoompistol", ACCESS_ADMIN, "Toggle zoompistol punishment.")
+    register_concmd("nobel_sendplayers", "cmd_nobel_sendplayers", ACCESS_ADMIN, "Sends list of players to webserver")
 
 //    register_concmd("nobel_fake_pausemenu", "cmd_nobel_fake_pausemenu", ACCESS_ADMIN, "Fakes the pause menu.")
 //    register_concmd("nobel_fake_teamswitch", "switch_teams", ACCESS_ADMIN, "Force team switch")
@@ -448,6 +449,7 @@ public zoomslap(const params[], id) {
 
 public event_round_start() {
     log_amx("CS event: round_start");
+    send_players()
     if (!ENABLED)
         return
 
@@ -480,9 +482,9 @@ public event_round_start() {
 }
 
 public stop_flash_protection() {
-	remove_task(9001)
-	log_amx("Flash protection over")
-	flash_protection_active = false
+    remove_task(9001)
+    log_amx("Flash protection over")
+    flash_protection_active = false
 }
 
 public shieldforce_or_weed_timeout() {
@@ -1396,8 +1398,7 @@ public player_switched_teams()
     json_free(obj)
 
     log_amx("CS event: %s switched to %s", playerName, team)
-    log_amx("Sending: %s", buf)
-    send_json(buf)
+    send_json_always(buf)
 }
 
 // Triggered when client receives STEAMID
@@ -1425,7 +1426,7 @@ public client_authorized(id)
     json_free(args)
     json_free(obj)
 
-    log_amx("Joined event: %s", buf)
+    log_amx("CS event: %s joined", playerName)
     send_json_always(buf)
 }
 
@@ -1450,8 +1451,18 @@ public client_disconnected(id)
     json_free(args)
     json_free(obj)
 
-    log_amx("Playerleft event: %s", buf)
+    log_amx("CS event: %s", buf)
     send_json_always(buf)
+}
+
+public cmd_nobel_sendplayers(id, level, cid)
+{
+    if (!cmd_access(id, level, cid, 0))
+        return PLUGIN_HANDLED;
+
+    send_players()
+
+    return PLUGIN_HANDLED;
 }
 
 stock send_players()
@@ -1479,12 +1490,9 @@ stock send_players()
 
     json_object_set_value(playersJson, "args", argsJson)
 
-	// Can't figure out max buffer length. 2^12 is too big I think..?
+    // Can't figure out max buffer length. 2^12 is too big I think..?
     new buf[3072]
     json_serial_to_string(playersJson, buf, charsmax(buf))
-
-    log_amx("Message length: %d", strlen(buf))
-    log_amx("PLAYERS: %s", buf)
 
     json_free(argsJson)
     json_free(playersJson)
@@ -1502,10 +1510,12 @@ stock send_json_always(event[]) {
     new sock
     new error
     sock = socket_open(nobel_server_host, nobel_server_port, SOCKET_TCP, error)
-    if (!error)
-    {
+    if (!error) {
+        log_amx("Sending JSON: %s", event)
         socket_send(sock, event, strlen(event))
         socket_close(sock)
+    } else {
+        log_amx("Error sending JSON: %s", error)
     }
 }
 
@@ -1528,11 +1538,8 @@ stock send_event_always(cmd[], arg1[] = "", arg2[] = "")
         json_object_set_value(eventJson, "args", argsJson)
     }
 
-	// Can't figure out max buffer length. 2^12 is too big I think..?
     new buf[512]
     json_serial_to_string(eventJson, buf, charsmax(buf))
-
-    log_amx("Basic event: %s", buf)
 
     json_free(argsJson)
     json_free(eventJson)
