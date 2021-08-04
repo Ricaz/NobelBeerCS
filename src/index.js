@@ -101,11 +101,9 @@ ws.on('connect', (conn) => {
 	clientsWs[conn.id] = conn
 	log.ws(`[${conn.id}] Connected from ${conn.socket.remoteAddress}.`)
 
-	if (tracker.running) {
-		log.ws('Sending full state.')
-		var fullState = { cmd: 'scoreboard', args: [ tracker.getScoreboard() ] }
-		conn.send(JSON.stringify(fullState))
-	}
+	log.ws('Sending full state.')
+	var fullState = { cmd: 'scoreboard', args: [ tracker.getScoreboard() ] }
+	conn.send(JSON.stringify(fullState))
 
 	conn.on('message', (data) => {
 		log.ws(`[${conn.id}]: ${data}`)
