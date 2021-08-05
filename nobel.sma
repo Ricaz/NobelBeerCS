@@ -908,7 +908,7 @@ public hook_death()
     }
     else if (grenade)
     {
-        send_event("grenade")
+        send_event("grenade", killersteamid, victimsteamid)
         freeze_player(killer)
     }
     else if (headshot)
