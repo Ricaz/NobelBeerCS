@@ -37,7 +37,7 @@ body {
 }
 
 .scores-inactive {
-	opacity: 30%;	
+	opacity: 50%;	
 }
 
 video {
@@ -55,4 +55,26 @@ video {
 	display: inline-block;
 	position: absolute;
 	right: 12pt;
+}
+
+.table td, .table th {
+	font-size: 1.75rem;
+	padding: .25rem;
+	border-color: rgba(0,0,0,0.3);
+	text-shadow: 0px 0px 4px rgb(255 255 255 / 77%);
+	font-family: 'Arial';
+}
+
+.table tr.UNASSIGNED {
+	background-color: rgb(220 220 220 / 90%);
+}
+
+.table tr.TERRORIST {
+	background-color: rgb(232 4 4 / 80%);
+	color: white;
+}
+
+.table tr.CT {
+	background-color: rgb(38 135 255 / 80%);
+	color: white;
 }

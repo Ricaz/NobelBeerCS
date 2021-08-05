@@ -42,7 +42,15 @@ class Tracker {
 		if (files.length > 0) {
 			const newestFile = files.map(name => ({name, ctime: fs.statSync(name).ctime}))
 				.sort((a, b) => b.ctime - a.ctime)[0].name
-			const loaded = JSON.parse(fs.readFileSync(newestFile, { encoding: 'utf8' }))
+			var loaded
+			try {
+				loaded = JSON.parse(fs.readFileSync(newestFile, { encoding: 'utf8' }))
+			} catch (e) {
+				log.score(`Error loading scoreboard: ${e}`)
+				return
+			}
+			if (! loaded)
+				return
 			if (! loaded.endTime && loaded.startTime > Date.now() - (60000 *  70)) {
 				log.score(`Loaded game with start time ${new Date(loaded.startTime).toLocaleTimeString('en-GB')} from ${newestFile}.`)
 				this.startTime = loaded.startTime
@@ -68,7 +76,7 @@ class Tracker {
 		var args = message.args
 
 		if (cmd == 'firstround') {
-			log.score('ROUND STARTING')
+			log.score('Game starting!')
 			this.startTime = Date.now()
 			this.running = true
 			this.board.reset()
@@ -109,7 +117,7 @@ class Tracker {
 		else if (cmd == 'roundstart')
 			this.board.handleNewRound()
 
-		else if (cmd == 'kill' || cmd == 'headshot')
+		else if (cmd == 'kill' || cmd == 'headshot' || cmd == 'grenade')
 			this.board.handleKill(args[0], args[1])
 
 		else if (cmd == 'knife')
@@ -123,7 +131,7 @@ class Tracker {
 
 
 		else if (cmd == 'mapchange') {
-			log.score(`ROUND ENDING! Switching to ${args[0]}...`)
+			log.score(`Game ended! Switching to ${args[0]}...`)
 			this.endTime = Date.now()
 			this.running = false
 
@@ -142,12 +150,8 @@ class Tracker {
 			return
 		}
 
-		// TODO: remove
-		else
-			log.score(`Unknown cmd: ${cmd}, event: ${JSON.stringify(message)}`)
-
-
-		// TODO: write scoreboard to temp file
+		// Write scoreboard to tmp file (to resume state if started during round)
+		// TODO: For some reason, file is sometimes written twice and I have no idea why..
 		if (this.running) {
 			var tmpdir = process.env.TMPDIR
 			if (! fs.existsSync(tmpdir))
@@ -269,6 +273,7 @@ class Scoreboard {
 		var killer = this.getPlayer(killerID)
 		var victim = this.getPlayer(victimID)
 		if (killer && victim) {
+			killer.teamkills += 1
 			killer.kills  += 1
 			killer.sips   += 20
 			victim.deaths += 1

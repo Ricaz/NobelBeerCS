@@ -10,8 +10,6 @@ const options = {
 }
 
 var server = http.createServer(options, (req, res) => {
-	log.http(`${req.method} ${req.url}`)
-
 	var parsedUrl = url.parse(req.url)
 
 	// var filepath = path.join('./dist/', parsedUrl.pathname)
@@ -70,7 +68,6 @@ var server = http.createServer(options, (req, res) => {
 				res.end(`Hvem har hældt øl i serveren?!\n${err}`)
 			} else {
 				res.end(data)
-				log.http(`Served '${req.url}' to ${req.connection.remoteAddress}.`)
 			}
 		})
 	})

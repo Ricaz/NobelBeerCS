@@ -8,7 +8,6 @@ require('dotenv').config()
 const net	= require('net')
 const WSs	= require('websocket').server
 const exec	= require('child_process').exec
-const path	= require('path')
 const fs	= require('fs')
 
 // Load custom modules
@@ -40,8 +39,8 @@ var tcp = net.createServer((sock) => {
 	})
 
 	sock.on('data', (data) => {
-		let message = decodeTCPMessage(data)
-		log.tcp(`${message.cmd}: ${JSON.stringify(message.args)}`)
+		log.tcp(data)
+		let message = JSON.parse(data)
 
 		// Scoreboard
 		// TODO: Currently, all events are forwarded to WS, *and* full state is submitted
@@ -64,7 +63,7 @@ var tcp = net.createServer((sock) => {
 
 			// Forward to WS clients
 			clientsWs.forEach((client) => { client.send(JSON.stringify(message)) })
-			log.ws(`Forwarded to ${clientsWs.length} clients.`)
+			log.ws(`Forwarded event to ${clientsWs.length} client(s).`)
 		}
 	})
 	sock.on('error', (err) => {
@@ -114,30 +113,27 @@ ws.on('connect', (conn) => {
 	})
 })
 
-// Create object from "encoded" string
-function decodeTCPMessage(msg) {
-	let out = {}
-
-	// If message uses old "encoding", turn into object.
-	// Otherwise, assume it's JSON
-	if (msg.includes("|€@!|")) {
-		let split = msg.split("|€@!|")
-			.filter((i) => { return i != '' })
-		return { 'cmd': split.shift(), 'args': split }
-	} else {
-		return JSON.parse(msg)
-	}
-}
-
+// Checks if media file exists for event.
+// If using a theme, falls back to default in case of missing file.
 function getMedia(event) {
 	let media = []
 	try {
-		media = fs.readdirSync(mediaPath + settings.theme + '/' + event)
+		var path = `${mediaPath}/${settings.theme}/${event}`
+		if (! fs.existsSync(path)) {
+			path = `${mediaPath}/default/${event}` 
+			if (! fs.existsSync(path))
+				return false
+		}
+
+		media = fs.readdirSync(path)
 		let random = media[Math.floor(Math.random() * media.length)]
-		let path = `media/${settings.theme}/${event}/${random}`
-		return path
+
+		if (path.includes('default'))
+			return `media/default/${event}/${random}`
+		else
+			return `media/${settings.theme}/${event}/${random}`
 	} catch (e) {
-		log.tcp(`No media found for event '${event}'.`)
+		log.tcp(`No media found for event '${event}'.\nError: ${e}`)
 		return false
 	}
 }
