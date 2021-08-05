@@ -9,7 +9,7 @@
 	<div class="container-fluid">
 		<div class="row">
 			<div class="col-12 pt-4">
-				<div class="container" id="app">
+				<div class="container-fluid" id="app">
 
 					<div class="status">Status: <pre class="d-inline">{{ status }}</pre></div>
 					<div class="volume">
@@ -18,7 +18,7 @@
 					</div>
 					<div class="scores-active pb-5">
 						<h1 class="text-center">Scoreboard</h1>
-						<table class="table table-fluid">
+						<table class="table table-dark table-fluid">
 							<thead>
 								<tr>
 									<th>Name</th>
@@ -31,7 +31,7 @@
 								</tr>
 							</thead>
 							<tbody>
-								<tr v-for="player in activeScores">
+								<tr v-for="player in activeScores" :class="player.team">
 									<td>{{ player.name }}</td>
 									<td><b>{{ player.kills }}</b> / {{ player.deaths }}</td>
 									<td><b>{{ player.knifekills }}</b> / {{ player.knifed }}</td>
@@ -45,7 +45,7 @@
 					</div>
 					<div class="scores-inactive mt-5">
 						<h1 class="text-center">Inactive</h1>
-						<table class="table table-fluid">
+						<table class="table table-dark table-fluid">
 							<thead>
 								<tr>
 									<th>Name</th>
@@ -58,7 +58,7 @@
 								</tr>
 							</thead>
 							<tbody>
-								<tr v-for="player in inactiveScores">
+								<tr v-for="player in inactiveScores" :class="player.team">
 									<td>{{ player.name }}</td>
 									<td><b>{{ player.kills }}</b> / {{ player.deaths }}</td>
 									<td><b>{{ player.knifekills }}</b> / {{ player.knifed }}</td>
@@ -71,7 +71,7 @@
 						</table>
 					</div>
 					<audio ref="audio" id="audio">Audio not available</audio>
-					<video ref="video" id="video">Video not available</video>
+					<video ref="video" class="hidden" id="video">Video not available</video>
 				</div>
 				
 			</div>
