@@ -47,8 +47,6 @@ new pauseMenu
 
 new nobel_server_host[50]
 new nobel_server_port
-new Handle:db
-new db_available = true
 new mod_state[10] = MOD_STATE_STOPPED
 new bool:knife_next = false
 new bool:knife_last = false
@@ -116,10 +114,6 @@ public plugin_init()
     register_concmd("shutup", "cmd_shutup", ACCESS_ADMIN, "Plays shutup!")
     register_concmd("ready", "cmd_ready", ACCESS_ADMIN, "Plays reeady sound!")
     register_concmd("nobel", "cmd_nobel", ACCESS_ADMIN, "View current settings.")
-    register_concmd("nobelstats", "cmd_nobel_stats", ACCESS_ADMIN, "View simple stats.")
-    register_concmd("nobel_stats", "cmd_nobel_stats", ACCESS_ADMIN, "View simple stats.")
-    register_concmd("nobel_full_stats", "cmd_nobel_full_stats", ACCESS_ADMIN, "View full stats.")
-    register_concmd("nobel_clear_stats", "cmd_nobel_clear_stats", ACCESS_ADMIN, "Clear all stats.")
     register_concmd("nobel_start", "cmd_nobel_start", ACCESS_ADMIN, "Start the plugin.")
     register_concmd("nobel_serverstart", "cmd_nobel_serverstart", ACCESS_ADMIN, "")
     register_concmd("nobel_stop", "cmd_nobel_stop", ACCESS_ADMIN, "Stop the plugin.")
@@ -156,10 +150,6 @@ public plugin_init()
     // Read configuration values from config/nobel.cfg
     register_cvar("nobel_server_host", "localhost")
     register_cvar("nobel_server_port", "1337")
-    register_cvar("nobel_db_host", "localhost")
-    register_cvar("nobel_db_user", "root")
-    register_cvar("nobel_db_pass", "root")
-    register_cvar("nobel_db_database", "beer_cs")
     register_cvar("nobel_num_shield", "2")
     register_cvar("nobel_num_weed", "3")
     register_cvar("nobel_num_kit", "2")
@@ -175,37 +165,12 @@ public plugin_init()
     get_cvar_string("nobel_server_host", nobel_server_host, charsmax(nobel_server_host))
     nobel_server_port = get_cvar_num("nobel_server_port")
 
-    new nobel_db_host[50]
-    get_cvar_string("nobel_db_host", nobel_db_host, charsmax(nobel_db_host))
-
-    new nobel_db_user[50]
-    get_cvar_string("nobel_db_user", nobel_db_user, charsmax(nobel_db_user))
-
-    new nobel_db_pass[50]
-    get_cvar_string("nobel_db_pass", nobel_db_pass, charsmax(nobel_db_pass))
-
-    new nobel_db_database[50]
-    get_cvar_string("nobel_db_database", nobel_db_database, charsmax(nobel_db_database))
-
     log_amx("Config: nobel_server_host=%s", nobel_server_host)
     log_amx("Config: nobel_server_port=%d", nobel_server_port)
-    log_amx("Config: nobel_db_host=%s", nobel_db_host)
-    log_amx("Config: nobel_db_user=%s", nobel_db_user)
-    log_amx("Config: nobel_db_pass=", nobel_db_pass)
-    log_amx("Config: nobel_db_database=%s", nobel_db_database)
-
-    // initialize DB conn
-    db = SQL_MakeDbTuple(nobel_db_host, nobel_db_user, nobel_db_pass, nobel_db_database)
 
     log_amx("Nobel Beer CS plugin loaded!")
 
     send_event_always("mapchange", mapName)
-
-    new db_error[512]
-    new ErrorCode,Handle:SqlConnection = SQL_Connect(db,ErrorCode,db_error,511)
-    if(SqlConnection == Empty_Handle) {
-        db_available=false
-    }
 
     screen_fade_msg = get_user_msgid("ScreenFade")
 
@@ -396,8 +361,6 @@ public event_screenfade(id) {
     if (!flash_protection_active)
         return 
 
-    new Float:gametime = get_gametime()
-
     message_begin(MSG_ONE, screen_fade_msg, {0,0,0}, id)
     write_short(3<<12) // duration
     write_short(1<<6) // hold time
@@ -407,8 +370,6 @@ public event_screenfade(id) {
     write_byte(random(255)) // b
     write_byte(235) // a
     message_end()
-
-    client_print(0, print_console, "Flash time %s", gametime)
 }
 
 public event_new_round() {
@@ -483,7 +444,7 @@ public event_round_start() {
 
 public stop_flash_protection() {
     remove_task(9001)
-    log_amx("Flash protection over")
+    log_amx("Technoflash period ended")
     flash_protection_active = false
 }
 
@@ -613,7 +574,7 @@ public grenade_throw(id, gindex, weaponid) {
     {
         new player[64]
         get_user_name(id, player, 63)
-        client_print(0, print_chat, "%s: TIIIIM FLAAAASH", player)
+        client_print(0, print_chat, "%s: TIM FLAAAASH", player)
     }
 }
 
@@ -672,82 +633,6 @@ public switch_teams() {
         log_amx("Setting VIP status on %s", playerName)
         cs_set_user_vip(firstCTplayer, 1, 1, 1)
     }
-}
-
-stock db_update(playerid, steamid[], name[], kills, tks, knifed, got_knifed, sips, rounds = 0)
-{
-    cache_sips[playerid] += sips
-
-    if (!db_available) {
-        log_amx("No connection to database!")
-        return
-    }
-
-    new buf_stor_nok[1024]
-    format(buf_stor_nok, 511, "INSERT INTO stats (steamid, name, kills, tks, knifed, got_knifed, sips, rounds) values ('%s', '%s', %d, %d, %d, %d, %d, %d) ON DUPLICATE KEY UPDATE name='%s', kills=kills+%d, tks=tks+%d, knifed=knifed+%d, got_knifed=got_knifed+%d, sips=sips+%d, rounds=rounds+%d", steamid, name, kills, tks, knifed, got_knifed, sips, rounds, name, kills, tks, knifed, got_knifed, sips, rounds)
-
-    log_amx("SQL QUERY: %s", buf_stor_nok)
-
-    SQL_ThreadQuery(db, "db_update_handler", buf_stor_nok)
-}
-
-public db_update_handler(FailState,Handle:Query,Error[],Errcode,Data[],DataSize) {
-    
-//    log_amx("FailState=%d", FailState)
-//    log_amx("Errcode=%d", Errcode)
-//    log_amx("DataSize=%d", DataSize)
-//    log_amx("Query=%s", Query)
-//    log_amx("Error=%s", Error)
-//    log_amx("Data=%s", Data)
-}
-
-public db_clear_stats_handler(FailState,Handle:Query,Error[],Errcode,Data[],DataSize) {
-    client_print(0, print_console, "Stats cleared!")
-}
-
-public db_stats_handler(FailState,Handle:Query,Error[],Errcode,Data[],DataSize) {
-    if (!db_available || !ENABLED)
-        return
-    client_print(0, print_console, "====== NOBEL STATS ======")
-    while (SQL_MoreResults(Query))
-    {
-        new name[64]
-        new steamid[32]
-        SQL_ReadResult(Query, 1, name, charsmax(name))
-        SQL_ReadResult(Query, 0, steamid, charsmax(steamid))
-
-//        client_print(0, print_console, "%s %s: %d", steamid, name, SQL_ReadResult(Query,2))
-        client_print(0, print_console, "%s: %d", name, SQL_ReadResult(Query,2))
-
-        SQL_NextRow(Query)
-    }
-    client_print(0, print_console, "=====================")
-}
-
-public db_full_stats_handler(FailState,Handle:Query,Error[],Errcode,Data[],DataSize) {
-    if (!db_available || !ENABLED)
-        return
-    client_print(0, print_console, "====== NOBEL STATS ======")
-    while (SQL_MoreResults(Query))
-    {
-        new name[64]
-        new steamid[32]
-        SQL_ReadResult(Query, 1, name, charsmax(name))
-        SQL_ReadResult(Query, 0, steamid, charsmax(steamid))
-
-        client_print(0, print_console, "--- %s ---", name)
-        client_print(0, print_console, "STEAM ID: %s", steamid)
-        client_print(0, print_console, "KILLS: %d", SQL_ReadResult(Query, 2))
-        client_print(0, print_console, "TEAM KILLS: %d", SQL_ReadResult(Query, 3))
-        client_print(0, print_console, "KNIFED: %d", SQL_ReadResult(Query, 4))
-        client_print(0, print_console, "GOT KNIFED: %d", SQL_ReadResult(Query, 5))
-        client_print(0, print_console, "SIPS: %d", SQL_ReadResult(Query, 6))
-        client_print(0, print_console, "ROUNDS: %d", SQL_ReadResult(Query, 7))
-        client_print(0, print_console, " ")
-
-        SQL_NextRow(Query)
-    }
-    client_print(0, print_console, "=====================")
 }
 
 public create_menus()
@@ -855,28 +740,6 @@ public hook_death()
     }
 
     log_amx("Death event occurred. Killer: %s, Victim: %s", killername, victimname)
-
-    // UPDATE STATS
-    if (suicide)
-    {
-        db_update(victim, victimsteamid, victimname, 0, 0, 0, 0, 10)
-    }
-    else if (team_kill)
-    {
-        db_update(killer, killersteamid, killername, 0, 1, 0, 0, 10)
-        db_update(victim, victimsteamid, victimname, 1, 0, 0, 0, 1)
-    }
-    else
-    {
-        db_update(killer, killersteamid, killername, 1, 0, 0, 0, 2)
-        db_update(victim, victimsteamid, victimname, 0, 0, 0, 0, 1)
-    }
-
-    if (knifed && !KNIFE)
-    {
-        db_update(killer, killersteamid, killername, 0, 0, 1, 0, 0)
-        db_update(victim, victimsteamid, victimname, 0, 0, 0, 1, 0)
-    }
 
     // EVENT CONTROL
     if (suicide)
@@ -1143,7 +1006,6 @@ public round_start()
             new name[64]
             get_user_name(players[i], name, charsmax(name))
             get_user_authid(players[i], steamid, charsmax(steamid))
-            db_update(players[i], steamid, name, 0, 0, 0, 0, 1, 1)
             cannot_move[players[i]] = false
         }
     }
@@ -1582,6 +1444,7 @@ public cmd_nobel_start(id, level, cid)
     log_amx("Read mp_roundtime value=%f", round_time)
 
     shuffle_players()
+    server_cmd("exec server.cfg")
     server_cmd("exec mr15.cfg")
     
     new params[1]
@@ -1604,11 +1467,6 @@ public cmd_nobel_serverstart(id, level, cid)
     PAUSE = true
     FLASHPROTECTION = true
     ANTIZOOMPISTOL = true
-
-    if (db_available) {
-        cmd_nobel_clear_stats(0, 0, 0)
-        PAUSE = true
-    }
 
     round_start()
     set_state(MOD_STATE_STARTED)
@@ -1698,52 +1556,6 @@ public cmd_nobel_sound(id, level, cid)
     return PLUGIN_HANDLED;
 }
 
-public cmd_nobel_clear_stats(id, level, cid)
-{
-    if (!cmd_access(id, level, cid, 0))
-        return PLUGIN_HANDLED;
-
-    client_print(0, print_console, "DB AVAILABLE? %s", (db_available ? "true" : "false"))
-    client_print(0, print_console, "Clearing stats.")
-
-    new Players[32] 
-    new playerCount, i 
-    get_players(Players, playerCount, "c") 
-
-    for (i=0; i<playerCount; i++) {
-        cache_sips[Players[i]] = 0
-    }
-
-    if (db_available)
-    {
-        SQL_ThreadQuery(db, "db_clear_stats_handler", "TRUNCATE TABLE stats")
-    }    
-
-    send_event("clearstats")    
-
-    return PLUGIN_HANDLED;
-} 
-
-public cmd_nobel_stats(id, level, cid)
-{
-    if (!cmd_access(id, level, cid, 0))
-        return PLUGIN_HANDLED;
-
-    if (!db_available)
-        return PLUGIN_HANDLED;
-
-    SQL_ThreadQuery(db, "db_stats_handler", "SELECT steamid,name,sips FROM stats ORDER BY sips DESC;")
-    return PLUGIN_HANDLED;
-}
-
-public cmd_nobel_full_stats(id, level, cid)
-{
-    if (!cmd_access(id, level, cid, 0))
-        return PLUGIN_HANDLED;
-
-    SQL_ThreadQuery(db, "db_full_stats_handler", "SELECT * FROM stats ORDER BY name;")
-    return PLUGIN_HANDLED;
-}
 
 public fw_UpdateClientData(id)
 {
