@@ -275,7 +275,7 @@ class Scoreboard {
 		if (killer && victim) {
 			killer.teamkills += 1
 			killer.kills  += 1
-			killer.sips   += 20
+			killer.sips   += 10
 			victim.deaths += 1
 			victim.sips   += 1
 		}
