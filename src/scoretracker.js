@@ -1,5 +1,6 @@
 const log  = require('./utility').log
 const fs   = require('fs')
+const path = require('path')
 const glob = require('glob')
 
 class Player {
@@ -25,6 +26,11 @@ class Tracker {
 		this.endTime
 		this.running = false
 		this.board
+		this.historyDir = path.resolve(__dirname, '../history')
+
+		// Ensure history dir exists
+		if (! fs.existsSync(this.historyDir))
+			fs.mkdirSync(this.historyDir)
 
 		// Load temp scoreboard if exists
 		this.board = new Scoreboard()
@@ -36,7 +42,7 @@ class Tracker {
 	}
 
 	loadScoreboard() {
-		var path = `${process.env.TMPDIR}/*.json`
+		var path = `${this.historyDir}/*.json`
 		var files = glob.sync(path)
 
 		if (files.length > 0) {
@@ -136,10 +142,7 @@ class Tracker {
 			this.running = false
 
 			// Write final scoreboard
-			var tmpdir = process.env.TMPDIR
-			if (! fs.existsSync(tmpdir))
-				fs.mkdirSync(tmpdir)
-			var filename = `${tmpdir}/${this.endTime}.json`
+			var filename = `${this.historyDir}/${this.endTime}.json`
 			fs.writeFile(filename, JSON.stringify(this.getScoreboard()), { flag: 'wx' }, (err) => {
 				if (err)
 					log.score(`Failed to write scoreboard to ${filename}: ${err.message}`)
@@ -153,10 +156,7 @@ class Tracker {
 		// Write scoreboard to tmp file (to resume state if started during round)
 		// TODO: For some reason, file is sometimes written twice and I have no idea why..
 		if (this.running) {
-			var tmpdir = process.env.TMPDIR
-			if (! fs.existsSync(tmpdir))
-				fs.mkdirSync(tmpdir)
-			var filename = `${tmpdir}/${this.startTime}.json`
+			var filename = `${this.historyDir}/${this.startTime}.json`
 			fs.writeFile(filename, JSON.stringify(this.getScoreboard()), { flag: 'w' }, (err) => {
 				if (err)
 					log.score(`Failed to write scoreboard to ${filename}: ${err.message}`)
