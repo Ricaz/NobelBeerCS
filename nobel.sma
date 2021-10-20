@@ -103,8 +103,8 @@ public plugin_init()
     RegisterHam(Ham_TraceAttack, "hostage_entity", "hostage_traceattack", false) 
     RegisterHam(Ham_TakeDamage, "hostage_entity", "hostage_damage", false)
     RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_awp", "event_zoompistol")
-    RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_g3sg1", "event_zoompistol")
-    RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_sg550", "event_zoompistol")
+    RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_g3sg1", "event_mildzoompistol")
+    RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_sg550", "event_mildzoompistol")
 
     register_concmd("nobel_maps", "cmd_nobel_maps", ACCESS_PUBLIC, "Lists available maps on the server.")
     register_concmd("nobel_pause", "cmd_nobel_pause", ACCESS_ADMIN, "Disable/enable pause.")
@@ -402,12 +402,36 @@ public event_zoompistol(id) {
     return HAM_HANDLED
 }
 
+public event_mildzoompistol(id) {
+    if (!ANTIZOOMPISTOL)
+        return HAM_IGNORED
+    new owner_id = pev(id, pev_owner)
+    new owner_name[63]
+    get_user_name(owner_id, owner_name, 63)
+    client_print(0, print_chat, "%s bruger (mild) zoompistol!1!!", owner_name)
+
+    new tmp_param[1]
+    tmp_param[0] = owner_id
+    client_print(0, print_console, "$$$ zoompistol event triggered %d", owner_id)
+    set_task(0.1, "zoomslap_mild", 9191, tmp_param, sizeof(tmp_param))
+
+    return HAM_HANDLED
+}
+
+public zoomslap_mild(const params[], id) {
+    client_print(0, print_console, "$$$ zoomslap (mild) triggered")
+    client_print(0, print_console, "$$$ params %d", params[0])
+    new player = params[0]
+    client_print(0, print_console, "$$$ player_id %d", player)
+    user_slap(player, random_num(10, 45), 1)
+}
+
 public zoomslap(const params[], id) {
     client_print(0, print_console, "$$$ zoomslap triggered")
     client_print(0, print_console, "$$$ params %d", params[0])
     new player = params[0]
     client_print(0, print_console, "$$$ player_id %d", player)
-    user_slap(player, random_num(9, 18), 1)
+    user_slap(player, random_num(17, 85), 1)
 }
 
 public event_round_start() {
