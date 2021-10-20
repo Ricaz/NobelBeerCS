@@ -43,6 +43,7 @@ new bool:BADUM = false
 new bool:KNIFE = false
 new bool:ANTIZOOMPISTOL = false
 new bool:FLASHPROTECTION = false
+new bool:RAMBO = false
 
 new pauseMenu
 
@@ -51,6 +52,8 @@ new nobel_server_port
 new mod_state[10] = MOD_STATE_STOPPED
 new bool:knife_next = false
 new bool:knife_last = false
+new bool:rambo_next = false
+new bool:rambo_last = false
 new Float:user_frozen_time = 5.0
 new bool:cannot_move[33]
 new player_money[33]
@@ -106,6 +109,17 @@ public plugin_init()
     RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_g3sg1", "event_mildzoompistol")
     RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_sg550", "event_mildzoompistol")
 
+    // Register HAM events for all weapons except m249 (RAMBOOOO)
+    new weaponName[32]
+    new NOSHOT_BITSUM = (1<<CSW_KNIFE) | (1<<CSW_HEGRENADE) | (1<<CSW_FLASHBANG) | (1<<CSW_SMOKEGRENADE) | (1<<CSW_M249)
+    for(new iId = CSW_P228; iId <= CSW_P90; iId++)
+    {
+        if ( ~NOSHOT_BITSUM & 1<<iId && get_weaponname(iId, weaponName, charsmax(weaponName)) )
+        {
+            RegisterHam(Ham_Weapon_PrimaryAttack, weaponName, "rambo_slap", 0)
+        }
+    }
+
     register_concmd("nobel_maps", "cmd_nobel_maps", ACCESS_PUBLIC, "Lists available maps on the server.")
     register_concmd("nobel_pause", "cmd_nobel_pause", ACCESS_ADMIN, "Disable/enable pause.")
     register_concmd("nobel_knifepause", "cmd_nobel_knifepause", ACCESS_ADMIN, "Disable/enable pausing on knifekills.")
@@ -122,6 +136,7 @@ public plugin_init()
     register_concmd("nobel_flash", "cmd_nobel_flash", ACCESS_ADMIN, "Toggle team flash dampening")
     register_concmd("nobel_knife", "cmd_nobel_knife", ACCESS_ADMIN, "Toggle the knife functionality.")
     register_concmd("nobel_knife_now", "cmd_nobel_knife_now", ACCESS_ADMIN, "Toggle the knife functionality NOW.")
+    register_concmd("nobel_rambo", "cmd_nobel_rambo", ACCESS_ADMIN, "Toggle the rambo functionality.")
     register_concmd("nobel_flashprotection", "cmd_nobel_flashprotection", ACCESS_ADMIN, "Toggle flash protection")
     register_concmd("nobel_antizoompistol", "cmd_nobel_antizoompistol", ACCESS_ADMIN, "Toggle zoompistol punishment.")
     register_concmd("nobel_sendplayers", "cmd_nobel_sendplayers", ACCESS_ADMIN, "Sends list of players to webserver")
@@ -381,6 +396,13 @@ public event_new_round() {
         return
     }
 
+    new players[32]
+    new playerCount, i
+    get_players(players, playerCount, "c") 
+    for (i=0; i<playerCount; i++) {
+        client_cmd(0, "-attack") 
+    }
+
     log_amx("CS event: new_round (mod ENABLED)");
     remove_task(7748)
     freezetime = true
@@ -451,6 +473,10 @@ public event_round_start() {
     {
         flash_thrown = false
         client_cmd(0, "use weapon_flashbang")
+    }
+    if (!RAMBO)
+    {
+        remove_task(1693)
     }
 
     new params[1]
@@ -877,6 +903,15 @@ public set_user_speed(id)
     if (!ENABLED)
         return
 
+    if (RAMBO) {
+        new weaponId = get_user_weapon(id)
+        if (weaponId == CSW_M249) {
+            client_cmd(0, "+attack") 
+        } else {
+            client_cmd(0, "-attack")
+        }
+    }
+
     if (freezetime || cannot_move[id] == true) {
         new user_name[32]
         get_user_name(id, user_name, charsmax(user_name))
@@ -1009,6 +1044,20 @@ public round_start()
     if (knife_last)
         disable_knife_round()
 
+    if (rambo_next)
+        RAMBO = true
+    
+    if (rambo_last)
+        disable_rambo_round()
+
+    if (RAMBO)
+    {
+        new params[1]
+        params[0] = 0
+        set_task(1.0, "rambo_round_timeout", 1692, params, 0, "a", 1)
+        set_task(1.0, "rambo_force_attack", 1693, params, 0, "b")
+    }
+    
     if (KNIFE)
     {
         new params[1]
@@ -1040,13 +1089,49 @@ public round_start()
 
     if (KNIFE) {
         send_event("leif")
+    } else if (RAMBO) {
+        send_event("rambo")
     } else {
         send_event(round_count == 1 ? "firstround" : "round")
     }
 
     new params[1]
     params[0] = 0
-    set_task(8.0, "money_timeout", 5591, params, 0, "a", 1)
+    set_task(10.0, "money_timeout", 5591, params, 0, "a", 1)
+}
+
+public rambo_slap(weapon_id) {
+    if (!RAMBO)
+        return
+
+    // Find out player index
+    new player = get_pdata_cbase(weapon_id, 41, 4) 
+    user_slap(player, random_num(40, 60), 1)
+}
+
+public rambo_round_timeout() 
+{
+    server_cmd("amx_csay green RAMBOOOOO!!")
+    server_cmd("amx_csay red ALLE HEDDER JOHN!1!!")
+    server_cmd("amx_csay blue RATATATATTATATATATATATATATATATATA")
+    server_cmd("amx_csay red FAT DET !!!")
+    server_exec()
+}
+
+public rambo_force_attack()
+{
+    new players[32]
+    new playerCount, i
+    get_players(players, playerCount, "c") 
+    for (i=0; i<playerCount; i++) {
+        cs_set_weapon_ammo( find_ent_by_owner( -1, "weapon_m249", players[i] ), 100 );
+        new weaponId = get_user_weapon(players[i])
+        if (weaponId == CSW_M249) {
+            client_cmd(0, "+attack;wait;wait;-attack;wait;wait;+attack") 
+        } else {
+            client_cmd(0, "-attack;wait;-attack")
+        }
+    }
 }
 
 public money_timeout()
@@ -1093,6 +1178,18 @@ public shuffle_players()
 public do_the_shuffle(elm1, elm2)
 {
     return random_num(0, 1) == 1 ? 1 : -1;
+}
+
+public disable_rambo_round()
+{
+    PAUSE = pause_enabled_before_kniferound
+    RAMBO = false
+    rambo_next = false
+    rambo_last = false
+    client_print(0, print_chat, "Nobel RAMBO ROUND disabled!")
+    remove_task(1693)
+
+    return PLUGIN_HANDLED;
 }
 
 public disable_knife_round()
@@ -1144,12 +1241,45 @@ public cmd_nobel_knife_now(id, level, cid)
     return PLUGIN_HANDLED;
 }
 
+public cmd_nobel_rambo(id, level, cid)
+{
+    if (!cmd_access(id, level, cid, 0))
+        return PLUGIN_HANDLED;
+
+    if (!ENABLED || KNIFE)
+        return PLUGIN_HANDLED;
+
+    if (!RAMBO && !rambo_next)
+    {
+        pause_enabled_before_kniferound = PAUSE
+
+        server_cmd("amx_csay green NEXT ROUND IS RAMBO ROUND !!!!!")
+        server_cmd("amx_csay red NEXT ROUND IS RAMBO ROUND !!!!!")
+        server_cmd("amx_csay blue RATATATATATATATA !!!!")
+        server_cmd("amx_csay red FAT DET !!!")
+        server_exec()
+        client_print(0, print_chat, "RAMBO ROUND enabled!")
+        rambo_next = true
+    }
+    else
+    {
+        server_cmd("amx_csay green LAST RAMBO ROUND !!!!!")
+        server_cmd("amx_csay red LAST RAMBO ROUND !!!!!")
+        server_cmd("amx_csay blue LAST RAMBO ROUND !!!!!")
+        server_cmd("amx_csay red FAT DET !!!")
+        server_exec()
+        rambo_last = true
+    }
+
+    return PLUGIN_HANDLED
+}
+
 public cmd_nobel_knife(id, level, cid)
 {
     if (!cmd_access(id, level, cid, 0))
         return PLUGIN_HANDLED;
 
-    if (!ENABLED)
+    if (!ENABLED || RAMBO)
         return PLUGIN_HANDLED;
  
     if (!KNIFE && !knife_next)
@@ -1249,10 +1379,24 @@ public cmd_shutup(id, level, cid)
 
 public player_spawned(id)
 {
-    if (FLASH && is_user_alive(id))
+    if (!is_user_alive(id)) {
+        return
+    }
+
+    if (FLASH)
     {
         give_item(id, "weapon_flashbang")
         give_item(id, "weapon_flashbang")
+    }
+
+    if (RAMBO)
+    {
+        strip_user_weapons(id)
+        set_user_health(id, 200)
+        give_item(id, "weapon_m249")
+        give_item(id, "item_assaultsuit")
+        give_item(id, "weapon_hegrenade")
+        cs_set_user_bpammo(id, CSW_M249, 10000)
     }
 }
 
@@ -1411,7 +1555,7 @@ stock send_json_always(event[]) {
 
 stock send_event(cmd[], arg1[] = "", arg2[] = "")
 {
-    if (ENABLED && SOUND) {
+    if (ENABLED) {
         send_event_always(cmd, arg1, arg2)
     }
 }
