@@ -36,6 +36,7 @@
 
 new bool:ENABLED = false
 new bool:PAUSE = false
+new bool:KNIFEPAUSE = false
 new bool:SOUND = false
 new bool:FLASH = false
 new bool:BADUM = false
@@ -107,6 +108,7 @@ public plugin_init()
 
     register_concmd("nobel_maps", "cmd_nobel_maps", ACCESS_PUBLIC, "Lists available maps on the server.")
     register_concmd("nobel_pause", "cmd_nobel_pause", ACCESS_ADMIN, "Disable/enable pause.")
+    register_concmd("nobel_knifepause", "cmd_nobel_knifepause", ACCESS_ADMIN, "Disable/enable pausing on knifekills.")
     register_concmd("nobel_sound", "cmd_nobel_sound", ACCESS_ADMIN, "Enable/disable sound.")
     register_concmd("nobel_badum", "cmd_nobel_badum", ACCESS_ADMIN, "Enable/disable badum.")
     register_concmd("nobel_theme", "cmd_nobel_theme", ACCESS_ADMIN, "Change sound theme.")
@@ -767,7 +769,9 @@ public hook_death()
     {
         send_event("knife", killersteamid, victimsteamid)
         client_print(0, print_chat, "%s got KNIFED!", victimname)
-        pause_or_freeze_player(killer)
+        if (KNIFEPAUSE) {
+            pause_or_freeze_player(killer)
+        }
     }
     else if (grenade)
     {
@@ -1465,6 +1469,7 @@ public cmd_nobel_serverstart(id, level, cid)
     ENABLED = true
     SOUND = true
     PAUSE = true
+    KNIFEPAUSE = true
     FLASHPROTECTION = true
     ANTIZOOMPISTOL = true
 
@@ -1514,6 +1519,19 @@ public cmd_nobel_pause(id, level, cid)
         client_print(0, print_chat, "Nobel Beer CS pausing enabled")
     else
         client_print(0, print_chat, "Nobel Beer CS pausing disabled")
+    return PLUGIN_HANDLED;
+}
+
+public cmd_nobel_knifepause(id, level, cid)
+{
+    if (!cmd_access(id, level, cid, 0))
+        return PLUGIN_HANDLED;
+
+    KNIFEPAUSE = !KNIFEPAUSE
+    if (PAUSE)
+        client_print(0, print_chat, "Nobel Beer CS knife pausing enabled")
+    else
+        client_print(0, print_chat, "Nobel Beer CS knife pausing disabled")
     return PLUGIN_HANDLED;
 }
 
