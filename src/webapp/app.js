@@ -11,8 +11,6 @@ let socketOptions = {
 	reconnectionDelay: 2000
 }
 
-import {Scoreboard as scoreboard} from './scoreboard.js'
-
 // Vue.use(Vuex)
 Vue.use(VueNativeSock, socketHost, socketOptions)
 
@@ -21,10 +19,10 @@ var app = new Vue({
 	data: {
 		status: "not connected",
 		theme: "default",
-		videopromise: undefined,
 		wslog: [],
 		volume: 30,
-		scores: []
+		scores: [],
+		audioElements: []
 	},
 	computed: {
 		activeScores() {
@@ -49,13 +47,6 @@ var app = new Vue({
 				case "scoreboard":
 					this.scores = data.args[0].scores
 					break
-				case "kill":
-					// scoreboard.handleKill('STEAMID:001', 'STEAMID:002')
-					break
-				case "round":
-					//this.playSound()
-					break
-				case "roundending":
 				case "unpause":
 					this.stopSound()
 					break
@@ -79,13 +70,18 @@ var app = new Vue({
 				console.log(`Could not determine if "${ext}" is sound or video.`)
 		},
 		playSound: function (path) {
-			if (!path) {
+			if (!path)
 				return	
-			}
-			this.$refs.audio.src = path
-			this.$refs.audio.play()
+
+			var audio = new Audio(path)
+			audio.load()
+			audio.addEventListener('canplay', e => {
+				audio.play()
+			})
+			this.audioElements.push(audio)
 		},
 		playVideo: function (path) {
+			// Attempt at streaming
 			//this.$refs.video.load()
 			//fetch(path)
 			//	.then(response => response.blob())
@@ -109,8 +105,13 @@ var app = new Vue({
 			this.$refs.video.load()
 			this.$refs.video.classList.add('hidden')
 
-			this.$refs.audio.src = ''
-			this.$refs.audio.load()
+			// Pause all playing audio elements and remove them from array
+			// Chrome will take care of garbage collection
+			this.audioElements.forEach((audio, i, arr) => {
+				if (! audio.paused)
+					audio.pause()
+				arr.splice(i, 1)
+			})
 		},
 		volumeChange: function () {
 			this.$refs.audio.volume = this.volume / 100
