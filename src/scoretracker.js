@@ -273,9 +273,12 @@ class Scoreboard {
 		var killer = this.getPlayer(killerID)
 		var victim = this.getPlayer(victimID)
 		if (killer && victim) {
+			if (killer.sips % 20 < 4)
+				killer.sips += 3
+			else 
+				killer.sips += killer.sips % 20
 			killer.teamkills += 1
 			killer.kills  += 1
-			killer.sips   += 10
 			victim.deaths += 1
 			victim.sips   += 1
 		}
