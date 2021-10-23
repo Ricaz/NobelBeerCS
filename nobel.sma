@@ -401,8 +401,12 @@ public event_new_round() {
     new playerCount, i
     get_players(players, playerCount, "c") 
     for (i=0; i<playerCount; i++) {
-        client_cmd(0, "-attack") 
+        if (task_exists(players[i])) {
+            log_amx("Removing rambo task for id %d", players[i])
+            remove_task(players[i])
+        }
     }
+    client_cmd(0, "-attack") 
 
     log_amx("CS event: new_round (mod ENABLED)");
     remove_task(7748)
@@ -761,6 +765,11 @@ public hook_death()
     if (victim == 0)
         return
 
+    if (RAMBO) {
+        log_amx("Removing rambo task for id %d", victim)
+        remove_task(victim)
+    }
+
     new CsTeams:victimteam = cs_get_user_team(victim)
     get_user_name(victim, victimname, 63)
     get_user_authid(victim, victimsteamid, charsmax(victimsteamid))
@@ -907,9 +916,9 @@ public set_user_speed(id)
     if (RAMBO) {
         new weaponId = get_user_weapon(id)
         if (weaponId == CSW_M249) {
-            client_cmd(0, "+attack") 
+            client_cmd(id, "+attack") 
         } else {
-            client_cmd(0, "-attack")
+            client_cmd(id, "-attack")
         }
     }
 
@@ -1056,7 +1065,6 @@ public round_start()
         new params[1]
         params[0] = 0
         set_task(1.0, "rambo_round_timeout", 1692, params, 0, "a", 1)
-        set_task(1.0, "rambo_force_attack", 1693, params, 0, "b")
     }
     
     if (KNIFE)
@@ -1112,26 +1120,26 @@ public rambo_slap(weapon_id) {
 
 public rambo_round_timeout() 
 {
-    server_cmd("amx_csay green RAMBOOOOO!!")
+    server_cmd("amx_csay green !! RAMBOOO RUNDEEE !!")
     server_cmd("amx_csay red ALLE HEDDER JOHN!1!!")
     server_cmd("amx_csay blue RATATATATTATATATATATATATATATATATA")
-    server_cmd("amx_csay red FAT DET !!!")
+    server_cmd("amx_csay red TATATATATATATATATATATATATATATATAT")
     server_exec()
 }
 
-public rambo_force_attack()
+public rambo_task(params[])
 {
-    new players[32]
-    new playerCount, i
-    get_players(players, playerCount, "c") 
-    for (i=0; i<playerCount; i++) {
-        cs_set_weapon_ammo( find_ent_by_owner( -1, "weapon_m249", players[i] ), 100 );
-        new weaponId = get_user_weapon(players[i])
-        if (weaponId == CSW_M249) {
-            client_cmd(0, "+attack;wait;wait;-attack;wait;wait;+attack") 
-        } else {
-            client_cmd(0, "-attack;wait;-attack")
-        }
+    new id = params[0]
+    if (!is_user_alive(id))
+        return
+
+    give_item(id, "weapon_hegrenade")
+    new weaponId = get_user_weapon(id)
+    if (weaponId == CSW_M249) {
+        client_cmd(id, "+attack") 
+        cs_set_weapon_ammo(find_ent_by_owner(-1, "weapon_m249", id), 100);
+    } else {
+        client_cmd(id, "-attack;wait;-attack")
     }
 }
 
@@ -1395,20 +1403,26 @@ public player_spawned(id)
         return
     }
 
+    client_cmd(id, "-attack") 
+
     if (FLASH)
     {
         give_item(id, "weapon_flashbang")
         give_item(id, "weapon_flashbang")
     }
 
-    if (RAMBO)
-    {
+    if (RAMBO) {
         strip_user_weapons(id)
         set_user_health(id, 200)
         give_item(id, "weapon_m249")
         give_item(id, "item_assaultsuit")
         give_item(id, "weapon_hegrenade")
         cs_set_user_bpammo(id, CSW_M249, 10000)
+
+        log_amx("Adding rambo task for %d", id)
+        new params[1]
+        params[0] = id
+        set_task(5.0, "rambo_task", id, params, 1, "b")
     }
 }
 
