@@ -130,6 +130,7 @@ public plugin_init()
     register_concmd("shutup", "cmd_shutup", ACCESS_ADMIN, "Plays shutup!")
     register_concmd("ready", "cmd_ready", ACCESS_ADMIN, "Plays reeady sound!")
     register_concmd("nobel", "cmd_nobel", ACCESS_ADMIN, "View current settings.")
+    register_concmd("nobel_shuffle", "cmd_nobel_shuffle", ACCESS_ADMIN, "Shuffles all players.")
     register_concmd("nobel_start", "cmd_nobel_start", ACCESS_ADMIN, "Start the plugin.")
     register_concmd("nobel_serverstart", "cmd_nobel_serverstart", ACCESS_ADMIN, "")
     register_concmd("nobel_stop", "cmd_nobel_stop", ACCESS_ADMIN, "Stop the plugin.")
@@ -1226,6 +1227,17 @@ public cmd_nobel_maps(id, level, cid)
         }
     }
     close_dir(dh) 
+
+    return PLUGIN_HANDLED;
+}
+
+public cmd_nobel_shuffle(id, level, cid)
+{
+    if (!cmd_access(id, level, cid, 0))
+        return PLUGIN_HANDLED;
+
+    if (ENABLED)
+		shuffle_players()
 
     return PLUGIN_HANDLED;
 }
