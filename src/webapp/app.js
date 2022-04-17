@@ -37,6 +37,7 @@ var app = new Vue({
 		this.$options.sockets.onopen = () => { this.status = 'connected' }
 		this.$options.sockets.onclose = () => { this.status = 'disconnected' }
 		this.$options.sockets.onerror = () => { this.status = 'ERROR' }
+		this.$refs.audio.volume = this.volume / 100
 	},
 	methods: {
 		handleMessage: function (msg) {
@@ -48,6 +49,8 @@ var app = new Vue({
 					this.scores = data.args[0].scores
 					break
 				case "unpause":
+				case "newround":
+				case "round":
 					this.stopSound()
 					break
 			}
@@ -76,6 +79,7 @@ var app = new Vue({
 			var audio = new Audio(path)
 			audio.load()
 			audio.addEventListener('canplay', e => {
+				audio.volume = this.volume / 100
 				audio.play()
 			})
 			this.audioElements.push(audio)
@@ -114,8 +118,10 @@ var app = new Vue({
 			})
 		},
 		volumeChange: function () {
-			this.$refs.audio.volume = this.volume / 100
 			this.$refs.video.volume = this.volume / 100
+			this.audioElements.forEach((audio, i, arr) => {
+				audio.volume = this.volume / 100
+			})
 		}
 	}
 })
