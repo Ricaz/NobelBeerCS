@@ -401,9 +401,9 @@ public event_new_round() {
     new playerCount, i
     get_players(players, playerCount, "c") 
     for (i=0; i<playerCount; i++) {
-        if (task_exists(players[i])) {
-            log_amx("Removing rambo task for id %d", players[i])
-            remove_task(players[i])
+        if (task_exists(players[i]+100)) {
+            log_amx("Removing rambo task for id %d (%d)", players[i], players[i]+100)
+            remove_task(players[i]+100)
         }
     }
     client_cmd(0, "-attack") 
@@ -766,8 +766,8 @@ public hook_death()
         return
 
     if (RAMBO) {
-        log_amx("Removing rambo task for id %d", victim)
-        remove_task(victim)
+        log_amx("Removing rambo task for id %d (%d)", victim, victim+100)
+        remove_task(victim+100)
     }
 
     new CsTeams:victimteam = cs_get_user_team(victim)
@@ -1419,10 +1419,10 @@ public player_spawned(id)
         give_item(id, "weapon_hegrenade")
         cs_set_user_bpammo(id, CSW_M249, 10000)
 
-        log_amx("Adding rambo task for %d", id)
+        log_amx("Adding rambo task for %d (%d)", id, id+100)
         new params[1]
         params[0] = id
-        set_task(5.0, "rambo_task", id, params, 1, "b")
+        set_task(5.0, "rambo_task", id+100, params, 1, "b")
     }
 }
 
