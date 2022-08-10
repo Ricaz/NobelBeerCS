@@ -42,6 +42,11 @@ var tcp = net.createServer((sock) => {
 		log.tcp(data)
 		let message = JSON.parse(data)
 
+		if (message.cmd == 'balance') {
+			sock.write(JSON.stringify(tracker.autoBalance(message.args.games)))
+			return
+		}
+
 		// Scoreboard
 		// TODO: Currently, all events are forwarded to WS, *and* full state is submitted
 		// on every scoreboard change. This is bad. We should send the full state on 

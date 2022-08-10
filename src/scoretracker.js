@@ -37,8 +37,144 @@ class Tracker {
 		this.loadScoreboard()
 
 		// TODO: debug
-		//this.board.addPlayer('a', 'ræv')
-		//this.board.addPlayer('b', 'abe')
+		//this.board.addPlayer('STEAM_0:0:32762533', 'jÆBBØH', 'T')
+		//this.board.addPlayer('STEAM_0:1:11611559', 'ALSTRUP', 'CT')
+	}
+
+	autoBalance(numGames = 0) {
+		let scores = this.getStats(numGames)
+
+		// Only use players currently active
+		scores = scores.filter((p) => {
+			let live = this.board.getScores().find(e => e.id == p.id)
+			return live.find(e => e.id == p.id) && e.active
+		}).sort((a, b) => b.kd - a.kd)
+
+		let newTeams = { ct: [], t: [] }
+		scores.forEach((player, i) => {
+			if (i % 2 == 0)
+				newTeams.ct.push(player)
+			else
+				newTeams.t.push(player)
+		})
+
+		log.score(`Balancing teams..`)
+		log.score(`Terrorists:`)
+		newTeams.ct.forEach((p) => {
+			log.score(`${p.kd}  ${p.name}`)	
+			p = p.id
+		})
+		log.score(`Counter-Terrorists:`)
+		newTeams.t.forEach((p) => {
+			log.score(`${p.kd}  ${p.name}`)	
+			p = p.id
+		})
+
+		newTeams.t = newTeams.t.map((p) => p.id)
+		newTeams.ct = newTeams.ct.map((p) => p.id)
+
+		return newTeams
+	}
+
+	getStats(numGames = 0) {
+		var path = `${this.historyDir}/*.json`
+		var files = glob.sync(path)
+		var loadedFiles = []
+
+		if (numGames == 0)
+			numGames = files.length
+
+		// Get files by ctime
+		const gameFiles = files.map(name => ({name, ctime: fs.statSync(name).ctime}))
+			.sort((a, b) => a.ctime - b.ctime)
+			
+		// Load files until we have requested number of games (with >6 players)
+		while (loadedFiles.length < numGames) {
+			let game
+			let file = gameFiles.pop().name
+
+			try {
+				game = JSON.parse(fs.readFileSync(file))
+			} catch (e) {
+				log.score(`Error loading scoreboard '${file}': ${e}`)
+				numGames--
+				continue
+			}
+
+			if (game.scores.length <= 6) {
+				numGames--
+				continue
+			}
+			
+			loadedFiles.push(game)
+		}
+
+		var scores = []
+		for (const game of loadedFiles) {
+			for (const score of game.scores) {
+				let player = scores.find((p) => {
+					return p.id == score.id
+				})
+				let exists = player ? true : false
+				let kd = 1
+
+				if (score.kills == 0 && score.deaths == 0) {
+					continue
+				} else if (score.kills > 0 && score.deaths == 0)
+					kd = score.kills
+				else if (score.kills == 0 && score.deaths > 0)
+					kd = 1 / score.deaths
+				else 
+					kd = score.kills / score.deaths
+
+				if (! exists) {
+					player = {
+						name: score.name,
+						id: score.id,
+						kd: kd,
+						games: 1,
+						teamkills: score.teamkills,
+						suicides: score.suicides,
+						sips: score.sips,
+						knifekills: score.knifekills,
+						knifed: score.knifed,
+						sips: score.sips
+					} 
+				}
+
+				//console.log(player)
+				//console.log(`kills ${score.kills}, deaths ${score.deaths}`)
+				//console.log(`old kd: ${player.kd}, new: ${kd}`)
+				//console.log('\n\n\n')
+
+				if (exists) {
+					player.kd += kd
+					player.teamkills += score.teamkills
+					player.suicides += score.suicides
+					player.sips += score.sips
+					player.knifekills =+ score.knifed
+					player.knifed += score.knifed
+					player.sips += score.sips
+					player.games++
+				} else {
+					scores.push(player)
+				}
+			}
+		}
+
+		scores.forEach((player) => {
+			player.kd = player.kd / player.games
+			player.kd = player.kd.toFixed(2)
+		})
+
+		var sortBy = 'sips'
+		scores.sort((a, b) => a[sortBy] - b[sortBy])
+
+		//for (const player of scores) {
+		//	log.score(`${player.name}, ${player.kd}`)
+		//}
+
+		return scores
 	}
 
 	loadScoreboard() {
@@ -135,14 +271,13 @@ class Tracker {
 		else if (cmd == 'suicide')
 			this.board.handleSuicide(args[0])
 
-
-		else if (cmd == 'mapchange') {
+		else if (cmd == 'mapend') {
 			log.score(`Game ended! Switching to ${args[0]}...`)
 			this.endTime = Date.now()
 			this.running = false
 
 			// Write final scoreboard
-			var filename = `${this.historyDir}/${this.endTime}.json`
+			var filename = `${this.historyDir}/${this.startTime}.json`
 			fs.writeFile(filename, JSON.stringify(this.getScoreboard()), { flag: 'wx' }, (err) => {
 				if (err)
 					log.score(`Failed to write scoreboard to ${filename}: ${err.message}`)

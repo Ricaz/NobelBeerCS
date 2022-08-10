@@ -16,6 +16,8 @@ var server = http.createServer(options, (req, res) => {
 	var filepath = ''
 	if (parsedUrl.pathname == '/')
 		filepath = 'dist/stats.html'
+	else if (parsedUrl.pathname.match(/\/history/g))
+		filepath = 'dist/history.html'
 	else
 		filepath = path.join('dist/assets/', parsedUrl.pathname)
 
