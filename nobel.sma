@@ -44,6 +44,7 @@ new bool:KNIFE = false
 new bool:ANTIZOOMPISTOL = false
 new bool:FLASHPROTECTION = false
 new bool:RAMBO = false
+new bool:BONG = false
 
 new pauseMenu
 
@@ -54,6 +55,8 @@ new bool:knife_next = false
 new bool:knife_last = false
 new bool:rambo_next = false
 new bool:rambo_last = false
+new bool:bong_next = false
+new bool:bong_last = false
 new Float:user_frozen_time = 5.0
 new bool:cannot_move[33]
 new player_money[33]
@@ -79,6 +82,7 @@ new bool:flash_protection_active = false
 new Float:flash_protection_time = 12.0
 new Float:map_pause_time = 300.0
 new vault
+new balance_socket
 
 public plugin_init()
 {
@@ -138,6 +142,8 @@ public plugin_init()
     register_concmd("nobel_knife", "cmd_nobel_knife", ACCESS_ADMIN, "Toggle the knife functionality.")
     register_concmd("nobel_knife_now", "cmd_nobel_knife_now", ACCESS_ADMIN, "Toggle the knife functionality NOW.")
     register_concmd("nobel_rambo", "cmd_nobel_rambo", ACCESS_ADMIN, "Toggle the rambo functionality.")
+    register_concmd("nobel_bong", "cmd_nobel_bong", ACCESS_ADMIN, "Toggle bong mode.")
+    register_concmd("nobel_balance", "cmd_nobel_balance", ACCESS_ADMIN, "Rebalance teams.")
     register_concmd("nobel_flashprotection", "cmd_nobel_flashprotection", ACCESS_ADMIN, "Toggle flash protection")
     register_concmd("nobel_antizoompistol", "cmd_nobel_antizoompistol", ACCESS_ADMIN, "Toggle zoompistol punishment.")
     register_concmd("nobel_sendplayers", "cmd_nobel_sendplayers", ACCESS_ADMIN, "Sends list of players to webserver")
@@ -481,7 +487,7 @@ public event_round_start() {
     }
     if (!RAMBO)
     {
-        remove_task(1693)
+        remove_task(1692)
     }
 
     new params[1]
@@ -806,16 +812,26 @@ public hook_death()
     // EVENT CONTROL
     if (suicide)
     {
-        send_event("suicide", victimsteamid)
-        if (PAUSE)
-        {
+        if (BONG) {
+            send_event("bong", killersteamid, victimsteamid)
+            client_print(0, print_chat, "%s? drikdrikdrikdrikdrikdrikdrikdrik", killername)
+        } else {
+            send_event("suicide", victimsteamid)
+            client_print(0, print_chat, "Hehe, %s begik selvmord :>", killername)
+        }
+        if (PAUSE) {
             pause_game()
         }
     }
     else if (team_kill)
     {
-        send_event("tk", killersteamid, victimsteamid)
-        client_print(0, print_chat, "Kan du bunde, %s?", killername)
+        if (BONG) {
+            send_event("bong", killersteamid, victimsteamid)
+            client_print(0, print_chat, "%s? drikdrikdrikdrikdrikdrikdrikdrik", killername)
+        } else {
+            send_event("tk", killersteamid, victimsteamid)
+            client_print(0, print_chat, "Kan du bunde, %s?", killername)
+        }
         pause_or_freeze_player(killer)
     }
     else if (KNIFE && !knifed && !grenade)
@@ -1032,6 +1048,14 @@ stock freeze_player(killer)
     }
 }
 
+public bong_round_timeout() 
+{
+    server_cmd("amx_csay green PAS PÅ!!")
+    server_cmd("amx_csay red DER ER BONG I LUFTEN")
+    server_cmd("amx_csay blue drikdrikdrikdrikdrikdrikdrikdrik")
+    server_exec()
+}
+
 public knife_round_timeout() 
 {
     server_cmd("amx_csay green LAAAARJF ROUND !!!!! Knife only!!")
@@ -1060,6 +1084,12 @@ public round_start()
     if (rambo_last)
         disable_rambo_round()
 
+    if (bong_next)
+        BONG = true
+    
+    if (bong_last)
+        disable_bong_round()
+
     if (RAMBO)
     {
         new params[1]
@@ -1072,6 +1102,13 @@ public round_start()
         new params[1]
         params[0] = 0
         set_task(1.0, "knife_round_timeout", 1691, params, 0, "a", 1)
+    }
+
+    if (BONG)
+    {
+        new params[1]
+        params[0] = 0
+        set_task(1.0, "bong_round_timeout", 1693, params, 0, "a", 1)
     }
 
     round_count++
@@ -1100,6 +1137,8 @@ public round_start()
         send_event("leif")
     } else if (RAMBO) {
         send_event("rambo")
+    } else if (BONG) {
+        send_event("bongintro")
     } else {
         send_event(round_count == 1 ? "firstround" : "round")
     }
@@ -1161,6 +1200,82 @@ public money_timeout()
         send_event("rich")
 }
 
+public balance_players()
+{
+    //if (!ENABLED)
+    //    return
+    
+    new arg[32]
+    read_argv(1, arg, 32)
+
+    if (equali(arg, ""))
+        return
+
+    new error
+    new reqbuf[100]
+    format(reqbuf, 100, "{\"cmd\":\"balance\",\"args\":{\"games\":%s}}", arg);
+    balance_socket = socket_open(nobel_server_host, nobel_server_port, SOCKET_TCP, error)
+    if (!error) {
+        log_amx("Sending balance request: %s", reqbuf)
+        socket_send(balance_socket, reqbuf, strlen(reqbuf))
+        set_task(1.0, "receive_balanced_players", 1666, "", 0, "a", 5)
+        set_task(3.0, "close_balance_socket", 1667, "", 0, "", 0)
+    } else {
+        log_amx("Error sending: %s", error)
+        socket_close(balance_socket)
+    }
+}
+
+public receive_balanced_players()
+{
+    new resbuf[1000]
+    if (socket_is_readable(balance_socket)) {
+        socket_recv(balance_socket, resbuf, 999)
+        log_amx("Received data: %s", resbuf)
+
+        new players[32], i, j, playerCount, resCount
+        get_players(players, playerCount, "ach") 
+
+        new JSON:response = json_parse(resbuf)
+        resCount = json_array_get_count(response)
+        log_amx("resCount: %s", resCount)
+
+        for (i = 0; i < resCount; i++) {
+            new JSON:obj = json_array_get_value(response, i)
+            new id[64] 
+            new team[32] 
+            json_object_get_string(obj, "steamid", id, 63)
+            json_object_get_string(obj, "team", team, 31)
+            // log_amx("i: %s  steamid: %s   team: %s", i, id, team)
+
+            for (j = 0; j < playerCount; j++) {
+                new authid[64]
+                get_user_authid(players[j], authid, charsmax(authid))
+                if (equal(id, authid)) {
+                    log_amx("Player %s, team: %s", id, team)
+                    if (equali(team, "CT")) {
+                        log_amx("Moving %s (%s) to %s", id, j, team)
+                        cs_set_user_team(players[j], CS_TEAM_CT)
+                    } else if (equali(team, "T")) {
+                        cs_set_user_team(players[j], CS_TEAM_T)
+                        log_amx("Moving %s (%s) to %s", id, j, team)
+                    }
+                    break
+                }
+            }
+        }
+
+        remove_task(1666)
+    } else {
+        log_amx("Socket was not readable")
+    }
+}
+
+public close_balance_socket()
+{
+    socket_close(balance_socket)
+}
+
 public shuffle_players()
 {
     new players[32] 
@@ -1189,6 +1304,18 @@ public do_the_shuffle(elm1, elm2)
     return random_num(0, 1) == 1 ? 1 : -1;
 }
 
+public disable_bong_round()
+{
+    PAUSE = pause_enabled_before_kniferound
+    BONG = false
+    bong_next = false
+    bong_last = false
+    client_print(0, print_chat, "Nobel Bong Round disabled!")
+    remove_task(1693)
+
+    return PLUGIN_HANDLED;
+}
+
 public disable_rambo_round()
 {
     PAUSE = pause_enabled_before_kniferound
@@ -1196,7 +1323,7 @@ public disable_rambo_round()
     rambo_next = false
     rambo_last = false
     client_print(0, print_chat, "Nobel RAMBO ROUND disabled!")
-    remove_task(1693)
+    remove_task(1692)
 
     return PLUGIN_HANDLED;
 }
@@ -1239,13 +1366,24 @@ public cmd_nobel_maps(id, level, cid)
     return PLUGIN_HANDLED;
 }
 
+public cmd_nobel_balance(id, level, cid)
+{
+    if (!cmd_access(id, level, cid, 0))
+        return PLUGIN_HANDLED;
+
+    log_amx("nobel_balance called")
+    balance_players()
+
+    return PLUGIN_HANDLED;
+}
+
 public cmd_nobel_shuffle(id, level, cid)
 {
     if (!cmd_access(id, level, cid, 0))
         return PLUGIN_HANDLED;
 
     if (ENABLED)
-		shuffle_players()
+        shuffle_players()
 
     return PLUGIN_HANDLED;
 }
@@ -1289,6 +1427,30 @@ public cmd_nobel_rambo(id, level, cid)
         server_cmd("amx_csay red FAT DET !!!")
         server_exec()
         rambo_last = true
+    }
+
+    return PLUGIN_HANDLED
+}
+
+public cmd_nobel_bong(id, level, cid)
+{
+    if (!cmd_access(id, level, cid, 0))
+        return PLUGIN_HANDLED
+
+    if (!ENABLED || KNIFE)
+        return PLUGIN_HANDLED
+
+    if (!BONG && !bong_next) {
+        pause_enabled_before_kniferound = PAUSE
+
+        server_cmd("amx_csay green PAS PÅ!!")
+        server_cmd("amx_csay red DER ER BONG I LUFTEN")
+        server_cmd("amx_csay blue drikdrikdrikdrikdrikdrikdrikdrik")
+        server_exec()
+        client_print(0, print_chat, "Nobel BONG ROUND enabled!")
+        bong_next = true
+    } else {
+        bong_last = false
     }
 
     return PLUGIN_HANDLED
