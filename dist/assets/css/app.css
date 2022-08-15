@@ -55,6 +55,7 @@ video {
 	display: inline-block;
 	position: absolute;
 	right: 12pt;
+	z-index: 10000;
 }
 
 .table td, .table th {
