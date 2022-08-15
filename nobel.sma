@@ -843,8 +843,17 @@ public hook_death()
     }
     else if (knifed && !KNIFE)
     {
-        send_event("knife", killersteamid, victimsteamid)
-        client_print(0, print_chat, "%s got KNIFED!", victimname)
+        // If Jeppe knifed someone
+        new steamid[64]
+        get_user_authid(killer, steamid, charsmax(steamid))
+        if (equali(steamid, "STEAM_0:0:32762533")) {
+            client_print(0, print_chat, "Hvad fanden Jeppe, hvad laver du der?!")
+            send_event("jeppeknife")
+        } else {
+            send_event("knife", killersteamid, victimsteamid)
+            client_print(0, print_chat, "%s got KNIFED!", victimname)
+        }
+
         if (KNIFEPAUSE) {
             pause_or_freeze_player(killer)
         }
@@ -1246,7 +1255,7 @@ public receive_balanced_players()
             new team[32] 
             json_object_get_string(obj, "steamid", id, 63)
             json_object_get_string(obj, "team", team, 31)
-            // log_amx("i: %s  steamid: %s   team: %s", i, id, team)
+            log_amx("steamid: %s   team: %s", id, team)
 
             for (j = 0; j < playerCount; j++) {
                 new authid[64]
@@ -1254,21 +1263,39 @@ public receive_balanced_players()
                 if (equal(id, authid)) {
                     log_amx("Player %s, team: %s", id, team)
                     if (equali(team, "CT")) {
-                        log_amx("Moving %s (%s) to %s", id, j, team)
+                        log_amx("Moving %s (%d) to %s", id, j, team)
                         cs_set_user_team(players[j], CS_TEAM_CT)
+                        //flash_player(j, 50, 50, 255)
                     } else if (equali(team, "T")) {
                         cs_set_user_team(players[j], CS_TEAM_T)
-                        log_amx("Moving %s (%s) to %s", id, j, team)
+                        log_amx("Moving %s (%d) to %s", id, j, team)
+                        //flash_player(j, 255, 50, 50)
                     }
                     break
                 }
             }
         }
 
+        // Flash? Lyd?
+        // flash_all(10.0) 
+
         remove_task(1666)
     } else {
         log_amx("Socket was not readable")
     }
+}
+
+public flash_player(player, red, green, blue)
+{
+    message_begin(MSG_ONE, get_user_msgid("ScreenFade"), {0, 0, 0}, player);
+    write_short(5<<12) // duration
+    write_short(2<<6) // hold time
+    write_short(0) // flags
+    write_byte(red) // r
+    write_byte(green) // g
+    write_byte(blue) // b
+    write_byte(250) // a
+    message_end();
 }
 
 public close_balance_socket()
