@@ -43,40 +43,44 @@ class Tracker {
 
 	autoBalance(numGames = 0) {
 		let scores = this.getStats(numGames)
+		let response = []
+
+		if (! this.board.getScores().length)
+			return false
 
 		// Only use players currently active
 		scores = scores.filter((p) => {
-			let live = this.board.getScores().find(e => e.id == p.id)
-			return live.find(e => e.id == p.id) && e.active
+			return this.board.getScores().find(e => e.id == p.id)
 		}).sort((a, b) => b.kd - a.kd)
 
 		let newTeams = { ct: [], t: [] }
 		scores.forEach((player, i) => {
-			if (i % 2 == 0)
+			if (i % 2 == 0) {
 				newTeams.ct.push(player)
-			else
+				response.push({ steamid: player.id, team: 'CT' })
+			} else {
 				newTeams.t.push(player)
+				response.push({ steamid: player.id, team: 'T' })
+			}
 		})
 
+		// Just logging
 		log.score(`Balancing teams..`)
-		log.score(`Terrorists:`)
+		log.score(`Counter-Terrorists:`)
 		newTeams.ct.forEach((p) => {
 			log.score(`${p.kd}  ${p.name}`)	
 			p = p.id
 		})
-		log.score(`Counter-Terrorists:`)
+		log.score(`Terrorists:`)
 		newTeams.t.forEach((p) => {
 			log.score(`${p.kd}  ${p.name}`)	
 			p = p.id
 		})
 
-		newTeams.t = newTeams.t.map((p) => p.id)
-		newTeams.ct = newTeams.ct.map((p) => p.id)
-
-		return newTeams
+		return response
 	}
 
-	getStats(numGames = 0) {
+	getStats(numGames = 0, sortBy = 'sips') {
 		var path = `${this.historyDir}/*.json`
 		var files = glob.sync(path)
 		var loadedFiles = []
@@ -142,11 +146,6 @@ class Tracker {
 					} 
 				}
 
-				//console.log(player)
-				//console.log(`kills ${score.kills}, deaths ${score.deaths}`)
-				//console.log(`old kd: ${player.kd}, new: ${kd}`)
-				//console.log('\n\n\n')
-
 				if (exists) {
 					player.kd += kd
 					player.teamkills += score.teamkills
@@ -167,12 +166,15 @@ class Tracker {
 			player.kd = player.kd.toFixed(2)
 		})
 
-		var sortBy = 'sips'
 		scores.sort((a, b) => a[sortBy] - b[sortBy])
 
+		//let totalSips = 0
 		//for (const player of scores) {
 		//	log.score(`${player.name}, ${player.kd}`)
+		//	totalSips += player.sips
 		//}
+		//console.log(scores)
+		//log.score(`Total sips: ${totalSips}`)
 
 		return scores
 	}
@@ -224,6 +226,12 @@ class Tracker {
 			this.board.reset()
 		}
 
+		else if (cmd == 'autobalance')
+			this.getStats(args.games, args.games)
+
+		else if (cmd == 'getstats')
+			this.getStats(args.games, args.games, args.sort)
+
 		else if (cmd == 'playerjoined')
 			this.board.addPlayer(args.id, args.name, args.team)
 
@@ -272,7 +280,7 @@ class Tracker {
 			this.board.handleSuicide(args[0])
 
 		else if (cmd == 'mapend') {
-			log.score(`Game ended! Switching to ${args[0]}...`)
+			log.score(`Game ended!`)
 			this.endTime = Date.now()
 			this.running = false
 
@@ -295,8 +303,6 @@ class Tracker {
 			fs.writeFile(filename, JSON.stringify(this.getScoreboard()), { flag: 'w' }, (err) => {
 				if (err)
 					log.score(`Failed to write scoreboard to ${filename}: ${err.message}`)
-				else 
-					log.score(`Wrote temp scoreboard to ${filename}`)
 			})
 		}
 	}

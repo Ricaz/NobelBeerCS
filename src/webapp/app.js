@@ -60,7 +60,7 @@ var app = new Vue({
 		playMedia: function (file) {
 			if (!file)
 				return
-			
+
 			let soundTypes = [ 'wav', 'mp3' ]
 			let videoTypes = [ 'ogg', 'mp4', 'webm' ]
 			let ext = file.split('.').pop()
