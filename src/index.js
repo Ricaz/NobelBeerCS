@@ -43,8 +43,10 @@ var tcp = net.createServer((sock) => {
 		let message = JSON.parse(data)
 
 		if (message.cmd == 'balance') {
-			sock.write(JSON.stringify(tracker.autoBalance(message.args.games)))
-			return
+			let balanced = tracker.autoBalance(message.args.games)
+			console.log('balanced: ', balanced)
+			if (balanced)
+				sock.write(JSON.stringify(balanced))
 		}
 
 		// Scoreboard
@@ -68,7 +70,6 @@ var tcp = net.createServer((sock) => {
 
 			// Forward to WS clients
 			clientsWs.forEach((client) => { client.send(JSON.stringify(message)) })
-			log.ws(`Forwarded event to ${clientsWs.length} client(s).`)
 		}
 	})
 	sock.on('error', (err) => {
