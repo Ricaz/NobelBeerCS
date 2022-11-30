@@ -1,18 +1,4 @@
 import Vue from 'vue'
-// import Vuex from 'vuex'
-import VueNativeSock from 'vue-native-websocket'
-
-const socketHost = process.env.WEBSOCKET_URI
-let socketOptions = { 
-	protocol: 'beercs',
-	format: 'json',
-	reconnection: true,
-	reconnectionAttemps: 10,
-	reconnectionDelay: 2000
-}
-
-// Vue.use(Vuex)
-Vue.use(VueNativeSock, socketHost, socketOptions)
 
 var app = new Vue({
 	el: '#app',
@@ -32,17 +18,37 @@ var app = new Vue({
 			return this.scores.filter(player => player.active == false)
 		}
 	},
+	mounted() {
+		this.connectWebSocket()
+	},
 	created() {
-		this.$options.sockets.onmessage = this.handleMessage
-		this.$options.sockets.onopen = () => { this.status = 'connected' }
-		this.$options.sockets.onclose = () => { this.status = 'disconnected' }
-		this.$options.sockets.onerror = () => { this.status = 'ERROR' }
 		this.audioElements.forEach((audio) => { audio.volume = this.volume / 100 })
 	},
 	methods: {
+		connectWebSocket: function() {
+			const socket = new WebSocket(process.env.WEBSOCKET_URI, 'beercs')
+
+			socket.addEventListener('open', (event) => {
+				console.log('WebSocket conncted!', event)
+				this.status = 'connected'
+			})
+
+			socket.addEventListener('close', (event) => {
+				console.log('WebSocket disconncted!', event)
+				this.status = 'disconnected'
+				setTimeout(() => { this.connectWebSocket() }, 2000)
+			})
+
+			socket.addEventListener('error', (event) => {
+				console.log('WebSocket error!', event)
+				this.status = 'ERROR'
+			})
+
+			socket.addEventListener('message', this.handleMessage)
+		},
 		handleMessage: function (msg) {
 			let data = JSON.parse(msg.data)
-			console.log('recieved:', data)
+			console.log('Recieved socket data: ', data)
 
 			switch (data.cmd) {
 				case "scoreboard":
