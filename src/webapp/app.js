@@ -37,7 +37,7 @@ var app = new Vue({
 		this.$options.sockets.onopen = () => { this.status = 'connected' }
 		this.$options.sockets.onclose = () => { this.status = 'disconnected' }
 		this.$options.sockets.onerror = () => { this.status = 'ERROR' }
-		this.$refs.audio.volume = this.volume / 100
+		this.audioElements.forEach((audio) => { audio.volume = this.volume / 100 })
 	},
 	methods: {
 		handleMessage: function (msg) {
