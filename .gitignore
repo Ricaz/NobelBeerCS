@@ -5,6 +5,7 @@ release/
 
 .env
 dist/assets/js/bundle.js
+dist/assets/js/bundle.js*
 tls/cert.pem
 tls/key.pem
 
