@@ -62,7 +62,7 @@ var tcp = net.createServer((sock) => {
 		// on every scoreboard change. This is bad. We should send the full state on 
 		// connection, and then only delta updates.
 		tracker.handleEvent(message)
-		if (tracker.running) {
+		if (tracker.running || true) {
 			var fullState = { cmd: 'scoreboard', args: [ tracker.getScoreboard() ] }
 			clientsWs.forEach((client) => { client.send(JSON.stringify(fullState)) })
 
