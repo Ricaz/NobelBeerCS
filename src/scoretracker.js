@@ -50,7 +50,15 @@ class Tracker {
 
 		// Only use players currently active
 		scores = scores.filter((p) => {
-			return this.board.getScores().find(e => e.id == p.id)
+			var found = this.board.getScores().find(e => e.id == p.id)
+			if (! found)
+				return false
+
+			console.log(`${found.name} active? ${found.active}. Team? ${found.team}`)
+			if (found && (found.team == 'CT' || found.team == 'TERRORIST'))
+				return true
+			else
+				return false
 		}).sort((a, b) => b.kd - a.kd)
 
 		let newTeams = { ct: [], t: [] }
