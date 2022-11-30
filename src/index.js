@@ -42,6 +42,14 @@ var tcp = net.createServer((sock) => {
 		log.tcp(data)
 		let message = JSON.parse(data)
 
+		if (message.cmd == 'getstats') {
+			console.log('opts: ', message.args)
+			let stats = tracker.getStats(message.args)
+			console.log('getstats: ', stats)
+			if (stats)
+				sock.write(JSON.stringify(stats))
+		}
+
 		if (message.cmd == 'balance') {
 			let balanced = tracker.autoBalance(message.args.games)
 			console.log('balanced: ', balanced)
