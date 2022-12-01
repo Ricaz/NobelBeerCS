@@ -143,9 +143,9 @@ function getMedia(event) {
 		let random = media[Math.floor(Math.random() * media.length)]
 
 		if (path.includes('default'))
-			return `media/default/${event}/${random}`
+			return `assets/media/default/${event}/${random}`
 		else
-			return `media/${settings.theme}/${event}/${random}`
+			return `assets/media/${settings.theme}/${event}/${random}`
 	} catch (e) {
 		log.tcp(`No media found for event '${event}'.\nError: ${e}`)
 		return false

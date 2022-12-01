@@ -15,11 +15,9 @@ var server = http.createServer(options, (req, res) => {
 	// var filepath = path.join('./dist/', parsedUrl.pathname)
 	var filepath = ''
 	if (parsedUrl.pathname == '/')
-		filepath = 'dist/stats.html'
-	else if (parsedUrl.pathname.match(/\/history/g))
-		filepath = 'dist/history.html'
+		filepath = 'dist/index.html'
 	else
-		filepath = path.join('dist/assets/', parsedUrl.pathname)
+		filepath = path.join('dist/', parsedUrl.pathname)
 
 	const map = {
 		'.ogg': 'audio/ogg',
