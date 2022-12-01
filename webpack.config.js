@@ -3,7 +3,7 @@ const Dotenv = require('dotenv-webpack')
 
 module.exports = {
 	mode: 'development',
-	entry: './src/webapp/app.js',
+	entry: './src/webapp.js',
 	module: {
 		rules: [
 			{

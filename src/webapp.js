@@ -1,6 +1,6 @@
-import Vue from 'vue'
+import { createApp } from 'vue'
 
-var app = new Vue({
+const app = createApp({
 	el: '#app',
 	data: {
 		status: "not connected",

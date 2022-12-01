@@ -11,9 +11,9 @@ const exec	= require('child_process').exec
 const fs	= require('fs')
 
 // Load custom modules
-const http	= require('./http-server')
-const log	= require('./utility').log
-const scoretracker = require('./scoretracker')
+const http	= require('./lib/http-server')
+const log	= require('./lib/utility').log
+const scoretracker = require('./lib/scoretracker')
 
 // Global vars
 var clientsWs	= []

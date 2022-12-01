@@ -2,9 +2,9 @@
   "name": "beercs",
   "version": "1.0.0",
   "description": "Media server for a drinking game in CS1.6",
-  "main": "src/index.js",
+  "main": "src/server.js",
   "dependencies": {
-    "vue": "^2.6.12",
+    "vue": "^2.7",
     "websocket": "^1.0.32"
   },
   "devDependencies": {
@@ -18,9 +18,8 @@
     "webpack-cli": "^5.0.0"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "build": "webpack-cli --mode production --progress",
-    "start": "node src/index.js",
+    "start": "node src/server.js",
     "watch": "webpack-cli --mode development --watch --progress"
   },
   "repository": {
