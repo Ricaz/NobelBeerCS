@@ -1,26 +1,23 @@
 {
   "name": "beercs",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Media server for a drinking game in CS1.6",
   "main": "src/server.js",
   "dependencies": {
-    "vue": "^2.7",
+    "bootstrap": "^5.2.3",
+    "vue": "^3.2",
     "websocket": "^1.0.32"
   },
   "devDependencies": {
-    "@babel/core": "^7.12.9",
-    "@babel/preset-env": "^7.12.7",
-    "babel-loader": "^9.1.0",
-    "dotenv-webpack": "^8.0.1",
-    "dotenv": "^16.0.3",
+    "@vitejs/plugin-vue": "^3.2.0",
     "glob": "^8.0.3",
-    "webpack": "^5.37.0",
-    "webpack-cli": "^5.0.0"
+    "sass": "^1.56.1",
+    "vite": "^3.2.4"
   },
   "scripts": {
-    "build": "webpack-cli --mode production --progress",
+    "build": "vite build --mode production",
     "start": "node src/server.js",
-    "watch": "webpack-cli --mode development --watch --progress"
+    "watch": "vite build --mode development --watch"
   },
   "repository": {
     "type": "git",

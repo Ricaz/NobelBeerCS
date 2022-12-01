@@ -4,8 +4,7 @@ release/
 .idea/
 
 .env
-dist/assets/js/bundle.js
-dist/assets/js/bundle.js*
+dist/*
 tls/cert.pem
 tls/key.pem
 
