@@ -26,7 +26,7 @@ class Tracker {
 		this.endTime
 		this.running = false
 		this.board
-		this.historyDir = path.resolve(__dirname, '../history')
+		this.historyDir = path.resolve(__dirname, '../../history')
 
 		// Ensure history dir exists
 		if (! fs.existsSync(this.historyDir))
