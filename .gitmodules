@@ -1,3 +1,0 @@
-[submodule "webapp"]
-	path = server
-	url = https://github.com/Ricaz/BeerCS
