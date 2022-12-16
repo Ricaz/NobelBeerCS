@@ -14,9 +14,7 @@ get increasingly drunk, *theoretically* balancing the game.
 The project also includes a seperate web app, which receives all events
 from the CS server, keeping track of the scoreboard (to display on a large
 screen), as well as play a myriad of sounds for each situation. We usually
-use Chromecast for this.
-
-Check out the separate [README in server/](server/).
+use Chromecast for this.  Check out the separate [README in server/](server/) (WIP).
 
 ## Rules
 
@@ -42,18 +40,13 @@ Here is a list of current features:
 * When you kill your teammates, commit suicide, or get a knife kill, the game pauses
   * This is to allow you to announce your shame or finish your beer while everyone waits
   * Admins will get a pop-up menu allowing them to unpause when ready
-* On the start of each map, the database and stats are reset. Stats are counted as sips.
-  * Can be viewed by running `nobel_stats` by anyone in console
-  * When anything happens in-game, the chat shows the amount of sips
-  * Has experimental ping faker, so during the match, the amount of sips for 
-  each player is shown in place of the latency
+
+Of course, everyone is encouraged to say *SKÅL* to thier victims/killers!
 
 ### Additional features
 
-To add to the above (which is probably the best part of the mod), the 
-mod can also connect to a separate web application, so it can play sounds and 
-display images and videos on our big screen. Furthermore we have support
-for several sound themes that can be changed by admins while playing the game.
+To add to the above (which is probably the best part of the mod), we also have 
+lots of additional features to add to the chaos.
 
 * Half-way team switch
   * Everyone will swap teams mid-game (without warning) half-way through the match
@@ -101,6 +94,8 @@ for several sound themes that can be changed by admins while playing the game.
   * Suicide
   * Team kill
   * Bomb exploded
+
+The sounds are highly recommended as they make the experience much more fun.
 
 ## Usage
 
