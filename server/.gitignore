@@ -1,0 +1,13 @@
+node_modules/
+release/
+.npm/
+.idea/
+
+.env
+dist/*
+tls/cert.pem
+tls/key.pem
+
+*.log
+*.swp
+*.swo
