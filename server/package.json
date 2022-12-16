@@ -1,0 +1,38 @@
+{
+  "name": "beercs",
+  "version": "2.0.0",
+  "description": "Media server for a drinking game in CS1.6",
+  "main": "src/server.js",
+  "dependencies": {
+    "bootstrap": "^5.2.3",
+    "vue": "^3.2",
+    "websocket": "^1.0.32"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^3.2.0",
+    "glob": "^8.0.3",
+    "sass": "^1.56.1",
+    "vite": "^3.2.4"
+  },
+  "scripts": {
+    "build": "vite build --mode production",
+    "start": "node src/server.js",
+    "watch": "vite build --mode development --watch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ricaz/BeerCS.git"
+  },
+  "keywords": [
+    "beer",
+    "cs",
+    "nobel",
+    "øl"
+  ],
+  "author": "Martin Alstrup",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Ricaz/BeerCS/issues"
+  },
+  "homepage": "https://github.com/Ricaz/BeerCS#readme"
+}
