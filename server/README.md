@@ -9,4 +9,4 @@ Accepts TCP connection from AMX Mod X mod, keeps track of scores, and hosts a we
 2. Configure `.env` from `.env-example`.
 3. Copy certificates to `tls/cert.pem` and `tls/key.pem` (or link provided self-signed localhost certs)
 4. Build using `npm run build`
-5. Run using `npm run start` (or execute `src/webapp.js`)
+5. Run using `npm run start` (or execute `src/server.js`)
