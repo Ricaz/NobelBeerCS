@@ -480,6 +480,12 @@ public event_round_start() {
     exploded = false
     time_elapsed = false
 
+    new mapName[64]
+    get_mapname(mapName, charsmax(mapName))
+    if (equali(mapName, "de_rats")) {
+        send_event("rats")
+    }
+
     if (FLASH)
     {
         flash_thrown = false
@@ -848,7 +854,13 @@ public hook_death()
         get_user_authid(killer, steamid, charsmax(steamid))
         if (equali(steamid, "STEAM_0:0:32762533")) {
             client_print(0, print_chat, "Hvad fanden Jeppe, hvad laver du der?!")
-            send_event("jeppeknife")
+            send_event("jeppeknife", killersteamid, victimsteamid)
+        } else if (equali(steamid, "STEAM_0:1:34134896")) {
+            client_print(0, print_chat, "Emil har en gennemsnitlig penis.")
+            send_event("emilknife", killersteamid, victimsteamid)
+        } else if (equali(steamid, "STEAM_0:1:11318024")) {
+            client_print(0, print_chat, "BOOOB HAN KNEPPER")
+            send_event("bobknife", killersteamid, victimsteamid)
         } else {
             send_event("knife", killersteamid, victimsteamid)
             client_print(0, print_chat, "%s got KNIFED!", victimname)
