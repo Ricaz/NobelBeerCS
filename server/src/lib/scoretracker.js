@@ -278,7 +278,7 @@ class Tracker {
 		else if (cmd == 'kill' || cmd == 'headshot' || cmd == 'grenade')
 			this.board.handleKill(args[0], args[1])
 
-		else if (cmd == 'knife')
+		else if (cmd.match(/knife$/))
 			this.board.handleKnife(args[0], args[1])
 
 		else if (cmd == 'tk')
