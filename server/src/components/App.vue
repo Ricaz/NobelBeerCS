@@ -216,12 +216,17 @@ export default {
 </template>
 
 <style>
+@font-face {
+	font-family: 'Trebuchet';
+	src: url('fonts/trebuc.ttf');
+}
+
 .table td, .table th {
 	font-size: 1.75rem;
 	padding: .25rem;
 	border-color: rgba(0,0,0,0.3);
 	text-shadow: 0px 0px 4px rgb(255 255 255 / 77%);
-	font-family: 'Arial';
+	font-family: 'Trebuchet';
 }
 
 .table tr.UNASSIGNED {
