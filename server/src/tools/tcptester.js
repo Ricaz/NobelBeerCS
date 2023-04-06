@@ -18,7 +18,7 @@ rl.on('line', (cmd) => {
 })
 
 var client = new net.Socket()
-client.connect(1337, '127.0.0.1', () => {
+client.connect(1337, 'cs.nobelnet.dk', () => {
 	console.log('Connected')
 	rl.prompt()
 })
