@@ -855,9 +855,15 @@ public hook_death()
         if (equali(steamid, "STEAM_0:0:32762533")) {
             client_print(0, print_chat, "Hvad fanden Jeppe, hvad laver du der?!")
             send_event("jeppeknife", killersteamid, victimsteamid)
+        } else if (equali(steamid, "STEAM_0:1:14846448")) {
+            client_print(0, print_chat, "Thue, DET ER RIGTIGT")
+            send_event("thueknife", killersteamid, victimsteamid)
         } else if (equali(steamid, "STEAM_0:1:34134896")) {
             client_print(0, print_chat, "Emil har en gennemsnitlig penis.")
             send_event("emilknife", killersteamid, victimsteamid)
+        } else if (equali(steamid, "STEAM_0:1:39235412")) {
+            client_print(0, print_chat, "BOOOB HAN KNEPPER")
+            send_event("chrisknife", killersteamid, victimsteamid)
         } else if (equali(steamid, "STEAM_0:1:11318024")) {
             client_print(0, print_chat, "BOOOB HAN KNEPPER")
             send_event("bobknife", killersteamid, victimsteamid)
