@@ -79,7 +79,7 @@ new alone_round = false
 new first_hostage_touched = false
 new screen_fade_msg
 new bool:flash_protection_active = false
-new Float:flash_protection_time = 12.0
+new Float:flash_protection_time = 8.0
 new Float:map_pause_time = 300.0
 new vault
 new balance_socket
