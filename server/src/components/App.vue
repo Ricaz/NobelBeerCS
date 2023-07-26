@@ -221,26 +221,38 @@ export default {
 	src: url('fonts/trebuc.ttf');
 }
 
+.status { 
+	font-family: monospace;
+}
+
 .table td, .table th {
 	font-size: 1.75rem;
 	padding: .25rem;
-	border-color: rgba(0,0,0,0.3);
-	text-shadow: 0px 0px 4px rgb(255 255 255 / 77%);
+	border-color: #ffffff17;
+	text-shadow: 0px 0px 2px rgb(0 0 0 / 50%);
 	font-family: 'Trebuchet';
+	background-color: rgb(0 0 0 / 0%);
+}
+
+table th {
+	color: white;
 }
 
 .table tr.UNASSIGNED {
-	background-color: rgb(220 220 220 / 90%);
+	background-color: rgb(220 220 220 / 0%);
+	color: gray;
 }
 
 .table tr.TERRORIST {
-	background-color: rgb(232 4 4 / 80%);
-	color: white;
+	background-color: rgb(232 4 4 / 0%);
+	#color: white;
+	color: #ea403e;
 }
 
 .table tr.CT {
-	background-color: rgb(38 135 255 / 80%);
-	color: white;
+	background-color: rgb(38 135 255 / 0%);
+	#color: white;
+	color: #00abff;
 }
 
 .hidden {
@@ -249,6 +261,11 @@ export default {
 
 .visible {
 	display: block;
+}
+
+body {
+	background-color: #131313;
+	color: white;
 }
 
 :root {
@@ -273,13 +290,12 @@ video {
 	top: 0;
 	left: 0;
 	width: 100%;
-	opacity: 65%;
+	opacity: 50%;
 }
 
 .volume {
 	display: inline-block;
-	position: absolute;
-	right: 12pt;
+	position: absolute; right: 12pt;
 	z-index: 10000;
 }
 </style>
