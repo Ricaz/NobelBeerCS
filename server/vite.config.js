@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => {
     return {
       build: {
         emptyOutDir: false,
-        outDir: process.env.VITE_BUILD_DIR
+        outDir: process.env.VITE_BUILD_DIR,
         copyPublicDir: false
       },
       plugins: [ vue() ],
@@ -16,7 +16,7 @@ export default defineConfig(({ mode }) => {
   } else {
     return {
       build: {
-        emptyOutDir: true,
+        emptyOutDir: false,
         outDir: process.env.VITE_BUILD_DIR
       },
       plugins: [ vue() ],
