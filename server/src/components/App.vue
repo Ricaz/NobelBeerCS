@@ -180,7 +180,7 @@ export default {
             </table>
           </div>
           <div class="scores-inactive mt-5">
-            <h1 class="text-center">Inactive</h1>
+            <h1 class="text-center">Inactive/offline</h1>
             <table class="table table-dark table-fluid">
               <thead>
                 <tr>
