@@ -89,21 +89,20 @@ class Tracker {
 	}
 
 	getStats(numGames = 0, sortBy = 'sips') {
-		var path = `${this.historyDir}/*.json`
-		var files = glob.sync(path)
+		log.score(`called tracker.getStats(${numGames}, ${sortBy})`)
+		var files = glob.sync(`${this.historyDir}/*.json`)
 		var loadedFiles = []
 
 		if (numGames == 0)
 			numGames = files.length
 
-		// Get files by ctime
-		const gameFiles = files.map(name => ({name, ctime: fs.statSync(name).ctime}))
-			.sort((a, b) => a.ctime - b.ctime)
+		// Get files by name (cant sort by ctime anymore as i fucked and deleted everything)
+		const gameFiles = files.sort((a, b) => path.basename(a, '.json') < path.basename(b, '.json'))
 			
 		// Load files until we have requested number of games (with >6 players)
 		while (loadedFiles.length < numGames) {
 			let game
-			let file = gameFiles.pop().name
+			let file = gameFiles.pop()
 
 			try {
 				game = JSON.parse(fs.readFileSync(file))
@@ -233,12 +232,6 @@ class Tracker {
 			this.running = true
 			this.board.reset()
 		}
-
-		else if (cmd == 'autobalance')
-			this.getStats(args.games, args.games)
-
-		else if (cmd == 'getstats')
-			this.getStats(args.games, args.games, args.sort)
 
 		else if (cmd == 'playerjoined')
 			this.board.addPlayer(args.id, args.name, args.team)
