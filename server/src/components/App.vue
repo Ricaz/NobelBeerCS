@@ -245,13 +245,11 @@ table th {
 
 .table tr.TERRORIST {
 	background-color: rgb(232 4 4 / 0%);
-	#color: white;
 	color: #ea403e;
 }
 
 .table tr.CT {
 	background-color: rgb(38 135 255 / 0%);
-	#color: white;
 	color: #00abff;
 }
 

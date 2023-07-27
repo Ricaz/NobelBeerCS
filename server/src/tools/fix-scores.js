@@ -6,6 +6,7 @@ const path = require('path')
 const glob = require('glob')
 
 var files = glob.sync('../history/*json')
+console.log(`Games: ${files.length}`)
 var games = []
 
 const gameFiles = files.map(name => ({name, ctime: fs.statSync(name).ctime}))
