@@ -43,8 +43,8 @@ var tcp = net.createServer((sock) => {
 		let message = JSON.parse(data)
 
 		if (message.cmd == 'getstats') {
-			console.log('opts: ', message.args)
-			let stats = tracker.getStats(message.args)
+			console.log(`opts: ${message.args}`)
+			let stats = tracker.getStats(...message.args)
 			console.log('getstats: ', stats)
 			if (stats)
 				sock.write(JSON.stringify(stats))
