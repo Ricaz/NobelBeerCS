@@ -104,6 +104,7 @@ class Tracker {
 			let game
 			let file = gameFiles.pop()
 
+			// Skip loading files if invalid JSON or less than 7 players
 			try {
 				game = JSON.parse(fs.readFileSync(file))
 			} catch (e) {
@@ -120,6 +121,9 @@ class Tracker {
 			loadedFiles.push(game)
 		}
 
+		// Loop over each loaded game, calculate K/D for each player,
+		// ignoring players with 0/0 stats. Should produce the same
+		// format as normal scoreboards, just with K/D added.
 		var scores = []
 		for (const game of loadedFiles) {
 			for (const score of game.scores) {
@@ -186,6 +190,8 @@ class Tracker {
 		return scores
 	}
 
+	// Loads newest scoreboard. This enabled us to recover a live game
+	// in case the web app crashes. Stats during the downtime will be lost.
 	loadScoreboard() {
 		var path = `${this.historyDir}/*.json`
 		var files = glob.sync(path)
