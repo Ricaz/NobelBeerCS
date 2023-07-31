@@ -229,7 +229,7 @@ export default {
 	font-size: 1.75rem;
 	padding: .25rem;
 	border-color: #ffffff17;
-	text-shadow: 0px 0px 2px rgb(0 0 0 / 50%);
+	text-shadow: 0px 0px 1px rgb(255 255 255 / 50%);
 	font-family: 'Trebuchet';
 	background-color: rgb(0 0 0 / 0%);
 }
