@@ -42,6 +42,14 @@ var tcp = net.createServer((sock) => {
 		log.tcp(data)
 		let message = JSON.parse(data)
 
+		if (message.cmd == 'getfullstats') {
+			console.log(`opts: ${message.args}`)
+			let stats = tracker.getStatsInterval(...message.args)
+			console.log('getfullstats: ', stats)
+			if (stats)
+				clientsWs.forEach((client) => { client.send(JSON.stringify(stats)) })
+		}
+
 		if (message.cmd == 'getstats') {
 			console.log(`opts: ${message.args}`)
 			let stats = tracker.getStats(...message.args)
@@ -58,9 +66,6 @@ var tcp = net.createServer((sock) => {
 		}
 
 		// Scoreboard
-		// TODO: Currently, all events are forwarded to WS, *and* full state is submitted
-		// on every scoreboard change. This is bad. We should send the full state on 
-		// connection, and then only delta updates.
 		tracker.handleEvent(message)
 		if (tracker.running || true) {
 			var fullState = { cmd: 'scoreboard', args: [ tracker.getScoreboard() ] }
@@ -80,8 +85,13 @@ var tcp = net.createServer((sock) => {
 			clientsWs.forEach((client) => { client.send(JSON.stringify(message)) })
 		}
 	})
+
 	sock.on('error', (err) => {
 		log.tcp(err)
+	})
+
+	tracker.on('game-ended', () => {
+		clientsWs.forEach((client) => { client.send(JSON.stringify({ cmd: 'game-ended' })) })
 	})
 	
 	clientsTcp.push(sock)
