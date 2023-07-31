@@ -2,6 +2,7 @@ const log  = require('./utility').log
 const fs   = require('fs')
 const path = require('path')
 const glob = require('glob')
+const EventEmitter = require('node:events')
 
 class Player {
 	constructor(args) {
@@ -20,8 +21,9 @@ class Player {
 	}
 }
 
-class Tracker {
+class Tracker extends EventEmitter {
 	constructor(args) {
+		super()
 		this.startTime
 		this.endTime
 		this.running = false
@@ -54,7 +56,7 @@ class Tracker {
 			if (! found)
 				return false
 
-			console.log(`${found.name} active? ${found.active}. Team? ${found.team}`)
+			console.log(`"${found.name}"  Active? ${found.active}. Team? ${found.team}`)
 			if (found && (found.team == 'CT' || found.team == 'TERRORIST'))
 				return true
 			else
@@ -88,6 +90,33 @@ class Tracker {
 		return response
 	}
 
+	// Generate stats for multiple games. Iterates back over games
+	// that fit within `interval` window from latest game. For example,
+	// if you set `interval` to 12 hours, you could get all stats from current session,
+	// or with `interval` to 3 days, get all stats for the entire LAN.
+	//
+	// Defaults to 3 days.
+	getStatsInterval(interval = 3 * 86400 * 1000) {
+		// Gets array of cleaned and desc-sorted filenames without .json extension
+		const files = glob.sync(`${this.historyDir}/*.json`)
+			.map((file) => { return path.basename(file, '.json') })
+			.sort((a, b) => { return b - a })
+
+		const now = Date.now()
+		let delta = now - 2 * interval // TODO: use interval
+		let numGames = 0
+		let current
+
+		while ((current = gameFiles.shift()) > delta) {
+			numGames++
+			delta = current - interval
+		}
+
+		return this.getStats(numGames)
+	}
+
+	// Loads the latest `numGames` scoreboards and adds them together.
+	// Also calculates K/D for each player.
 	getStats(numGames = 0, sortBy = 'sips') {
 		log.score(`called tracker.getStats(${numGames}, ${sortBy})`)
 		var files = glob.sync(`${this.historyDir}/*.json`)
@@ -98,7 +127,7 @@ class Tracker {
 
 		// Get files by name (cant sort by ctime anymore as i fucked and deleted everything)
 		const gameFiles = files.sort((a, b) => path.basename(a, '.json') < path.basename(b, '.json'))
-			
+
 		// Load files until we have requested number of games (with >6 players)
 		while (loadedFiles.length < numGames) {
 			let game
@@ -117,7 +146,7 @@ class Tracker {
 				numGames--
 				continue
 			}
-			
+
 			loadedFiles.push(game)
 		}
 
@@ -148,6 +177,8 @@ class Tracker {
 						id: score.id,
 						kd: kd,
 						games: 1,
+						kills: score.kills,
+						deaths: score.deaths,
 						teamkills: score.teamkills,
 						suicides: score.suicides,
 						sips: score.sips,
@@ -159,6 +190,8 @@ class Tracker {
 
 				if (exists) {
 					player.kd += kd
+					player.kills += score.kills
+					player.deaths += score.deaths
 					player.teamkills += score.teamkills
 					player.suicides += score.suicides
 					player.sips += score.sips
@@ -190,7 +223,7 @@ class Tracker {
 		return scores
 	}
 
-	// Loads newest scoreboard. This enabled us to recover a live game
+	// Loads newest scoreboard. This enables us to recover a live game
 	// in case the web app crashes. Stats during the downtime will be lost.
 	loadScoreboard() {
 		var path = `${this.historyDir}/*.json`
