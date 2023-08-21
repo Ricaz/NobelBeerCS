@@ -13,10 +13,16 @@ export default {
 
   computed: {
     activeScores() {
-      return this.scores.filter(player => player.active == true)
+      let board = this.scores.filter(player => player.active == true)
+      board.title = "Scoreboard"
+      board.show = true
+      return board
     },
     inactiveScores() {
-      return this.scores.filter(player => player.active == false)
+      let board = this.scores.filter(player => player.active == false)
+      board.title = "Inactive/offline"
+      board.show = true
+      return board
     }
   },
 
@@ -152,60 +158,14 @@ export default {
             <input type="range" name="volume" ref="volume" step="5" id="volume" min="0" max="100" v-model="volume" v-on:change="volumeChange" />
             <label for="volume">Volume</label>
           </div>
+
           <div class="scores-active pb-5">
-            <h1 class="text-center">Scoreboard</h1>
-            <table class="table table-fluid">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>K/D</th>
-                  <th>Knife K/D</th>
-                  <th>TKs</th>
-                  <th>Suicides</th>
-                  <th>Sips</th>
-                  <th>Rounds</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="player in activeScores" :class="player.team">
-                  <td>{{ player.name }}</td>
-                  <td><b>{{ player.kills }}</b> / {{ player.deaths }}</td>
-                  <td><b>{{ player.knifekills }}</b> / {{ player.knifed }}</td>
-                  <td>{{ player.teamkills }}</td>
-                  <td>{{ player.suicides }}</td>
-                  <td>{{ player.sips }}</td>
-                  <td>{{ player.rounds }}</td>
-                </tr>
-              </tbody>
-            </table>
+            <Scoreboard v-if="activeScores.show" :scoreboard="activeScores" />
           </div>
-          <div class="scores-inactive mt-5">
-            <h1 class="text-center">Inactive/offline</h1>
-            <table class="table table-dark table-fluid">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>K/D</th>
-                  <th>Knife K/D</th>
-                  <th>TKs</th>
-                  <th>Suicides</th>
-                  <th>Sips</th>
-                  <th>Rounds</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="player in inactiveScores" :class="player.team">
-                  <td>{{ player.name }}</td>
-                  <td><b>{{ player.kills }}</b> / {{ player.deaths }}</td>
-                  <td><b>{{ player.knifekills }}</b> / {{ player.knifed }}</td>
-                  <td>{{ player.teamkills }}</td>
-                  <td>{{ player.suicides }}</td>
-                  <td>{{ player.sips }}</td>
-                  <td>{{ player.rounds }}</td>
-                </tr>
-              </tbody>
-            </table>
+          <div class="scores-inactive pb-5">
+            <Scoreboard v-if="inactiveScores.show" :scoreboard="inactiveScores" />
           </div>
+
           <audio ref="audio" id="audio">Audio not available</audio>
           <video ref="video" class="hidden" id="video">Video not available</video>
         </div>
