@@ -7,7 +7,8 @@ export default {
       wslog: [],
       volume: 30,
       scores: [],
-      audioElements: []
+      audioElements: [],
+      loadedFiles: 0
       }
   },
 
@@ -64,6 +65,9 @@ export default {
       switch (data.cmd) {
         case "scoreboard":
           this.scores = data.args[0].scores
+          break
+        case "filelist":
+          this.preloadAudio(data.data)
           break
         case "unpause":
         case "newround":
@@ -143,6 +147,19 @@ export default {
       this.audioElements.forEach((audio, i, arr) => {
         audio.volume = this.volume / 100
       })
+    },
+
+    loadAudioFile: function(url) {
+      let audio = new Audio()
+      audio.addEventListener('canplaythrough', function() {
+        loadedFiles++
+
+      }, false)
+      audio.src = url
+    },
+
+    preloadAudio: function(soundFiles) {
+      console.log("Loading files:", soundFiles)
     }
   }
 }

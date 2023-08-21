@@ -103,7 +103,7 @@ class Tracker extends EventEmitter {
 			.sort((a, b) => { return b - a })
 
 		const now = Date.now()
-		let delta = now - 2 * interval // TODO: use interval
+		let delta = now - 2 * interval
 		let numGames = 0
 		let current
 
