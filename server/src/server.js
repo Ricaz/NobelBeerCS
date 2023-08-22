@@ -30,6 +30,15 @@ const mediaPath = 'dist/assets/media/'
 var themes		= loadThemes()
 
 var tracker = new scoretracker()
+tracker.on('state', (state) => {
+	clientsWs.forEach((client) => { client.send(JSON.stringify({ cmd: 'state', data: state })) })
+})
+tracker.on('stats', (stats) => {
+	clientsWs.forEach((client) => { client.send(JSON.stringify({ cmd: 'stats', data: stats })) })
+})
+tracker.on('game-ended', () => {
+	clientsWs.forEach((client) => { client.send(JSON.stringify({ cmd: 'game-ended' })) })
+})
 
 // Create TCP socket server and set up event handling on it
 var tcp = net.createServer((sock) => {
@@ -91,10 +100,6 @@ var tcp = net.createServer((sock) => {
 		log.tcp(err)
 	})
 
-	tracker.on('game-ended', () => {
-		clientsWs.forEach((client) => { client.send(JSON.stringify({ cmd: 'game-ended' })) })
-	})
-	
 	clientsTcp.push(sock)
 	sock.pipe(sock)
 })

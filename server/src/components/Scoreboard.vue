@@ -1,9 +1,9 @@
 <script setup>
-defineProps([ 'scoreboard' ])
+defineProps([ 'scoreboard', 'title' ])
 </script>
 
 <template>
-	<h1 class="text-center">{{ scoreboard.title }}</h1>
+	<h1 class="text-center">{{ title }}</h1>
 	<table class="table table-fluid">
 		<thead>
 			<tr>
