@@ -27,6 +27,7 @@ class Tracker extends EventEmitter {
 		this.startTime
 		this.endTime
 		this.running = false
+		this.state = 'idle'
 		this.board
 		this.historyDir = path.resolve(__dirname, '../../history')
 
@@ -41,6 +42,28 @@ class Tracker extends EventEmitter {
 		// TODO: debug
 		//this.board.addPlayer('STEAM_0:0:32762533', 'jÆBBØH', 'T')
 		//this.board.addPlayer('STEAM_0:1:11611559', 'ALSTRUP', 'CT')
+	}
+
+	changeState(newState) {
+		this.state = newState
+		this.emit('state', this.state)
+
+		if (newState == 'ended') {
+			this.emit('stats', this.generatePauseStats())
+
+			// If a game ended, change back to idle after 30 hours
+			setTimeout(() => {
+				this.state = 'idle'
+				this.emit('state', this.state)
+			}, 3600 * 30 * 1000)
+		}
+	}
+
+	generatePauseStats() {
+		let lanStats = this.getStatsInterval()
+		let todayStats = this.getStatsInterval(3600 * 16 * 1000)
+
+		return { today: todayStats, lan: lanStats }
 	}
 
 	autoBalance(numGames = 0) {
@@ -107,7 +130,7 @@ class Tracker extends EventEmitter {
 		let numGames = 0
 		let current
 
-		while ((current = gameFiles.shift()) > delta) {
+		while ((current = files.shift()) > delta) {
 			numGames++
 			delta = current - interval
 		}
@@ -246,6 +269,7 @@ class Tracker extends EventEmitter {
 				this.startTime = loaded.startTime
 				this.board.players = loaded.scores
 				this.running = true
+				this.changeState('live')
 				return
 			}
 		}
@@ -269,6 +293,7 @@ class Tracker extends EventEmitter {
 			log.score('Game starting!')
 			this.startTime = Date.now()
 			this.running = true
+			this.changeState('live')
 			this.board.reset()
 		}
 
@@ -319,10 +344,9 @@ class Tracker extends EventEmitter {
 		else if (cmd == 'suicide')
 			this.board.handleSuicide(args[0])
 
-		else if (cmd == 'mapend') {
+		else if (cmd == 'mapend' || cmd == 'mapchange') {
 			log.score(`Game ended!`)
 			this.endTime = Date.now()
-			this.running = false
 
 			// Write final scoreboard
 			var filename = `${this.historyDir}/${this.startTime}.json`
@@ -332,6 +356,9 @@ class Tracker extends EventEmitter {
 				else 
 					log.score(`Wrote final scoreboard to file ${filename}`)
 			})
+
+			this.running = false
+			this.changeState('ended')
 
 			return
 		}
