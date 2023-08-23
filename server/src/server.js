@@ -134,7 +134,10 @@ ws.on('connect', (conn) => {
 	var fullState = { cmd: 'scoreboard', args: [ tracker.getScoreboard() ] }
 	conn.send(JSON.stringify(fullState))
 
-  // Send list of files
+	log.ws('Sending stats')
+	conn.send(JSON.stringify({ cmd: 'stats', data: tracker.generatePauseStats() }))
+
+	// Send list of files
 	conn.send(JSON.stringify({ cmd: 'filelist', data: getMediaList() }))
 
 	conn.on('message', (data) => {

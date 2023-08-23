@@ -12,8 +12,8 @@ defineProps([ 'scoreboard', 'title' ])
 				<th>Knife K/D</th>
 				<th>TKs</th>
 				<th>Suicides</th>
-				<th>Sips</th>
-				<th>Rounds</th>
+				<th>Øls</th>
+				<th>Maps</th>
 			</tr>
 		</thead>
 		<tbody>
