@@ -230,11 +230,13 @@ export default {
 
           </div>
 
-          <div v-if="todayScores.show" class="scores-today pb-5 col-6">
-            <Scoreboard :scoreboard="todayScores.scores" :title="todayScores.title" />
-          </div>
-          <div v-if="lanScores.show" class="scores-lan pb-5 col-6">
-            <Scoreboard :scoreboard="lanScores.scores" :title="lanScores.title" />
+          <div class="row w-100">
+            <div v-if="todayScores.show" class="scores-today pb-5 col-6">
+              <Scoreboard :scoreboard="todayScores.scores" :title="todayScores.title" />
+            </div>
+            <div v-if="lanScores.show" class="scores-lan pb-5 col-6">
+              <Scoreboard :scoreboard="lanScores.scores" :title="lanScores.title" />
+            </div>
           </div>
           <div v-if="activeScores.show" class="scores-active pb-5">
             <Scoreboard :scoreboard="activeScores.scores" :title="activeScores.title" />
