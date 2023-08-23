@@ -41,7 +41,7 @@ export default {
       board.scores = this.stats.today || []
       board.scores.forEach((p) => { p.team = 'neutral' })
       board.title = "Stats for today"
-      board.show = this.state == 'ended' ? true : false
+      board.show = this.state == 'ended' || this.state == 'idle' ? true : false
       if (! board.scores.length)
         board.show = false
       return board
@@ -51,7 +51,7 @@ export default {
       board.scores = this.stats.lan || []
       board.scores.forEach((p) => { p.team = 'neutral' })
       board.title = "Stats for this LAN"
-      board.show = this.state == 'ended' ? true : false
+      board.show = this.state == 'ended' || this.state == 'idle' ? true : false
       if (! board.scores.length)
         board.show = false
       return board
@@ -268,11 +268,11 @@ export default {
 }
 
 .table td, .table th {
-	font-size: 1.75rem;
+	font-size: 1.5rem;
 	padding: .25rem;
 	border-color: #ffffff17;
 	text-shadow: 0px 0px 1px rgb(255 255 255 / 50%);
-	font-family: 'Trebuchet';
+	/*font-family: 'Trebuchet';*/
 	background-color: rgb(0 0 0 / 0%);
 }
 

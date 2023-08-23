@@ -135,6 +135,7 @@ class Tracker extends EventEmitter {
 			delta = current - interval
 		}
 
+		log.score(`called tracker.getStatsInterval(${interval})`)
 		return this.getStats(numGames)
 	}
 
@@ -173,18 +174,32 @@ class Tracker extends EventEmitter {
 			loadedFiles.push(game)
 		}
 
+		log.score(`Loading ${loadedFiles.length} files`)
+
 		// Loop over each loaded game, calculate K/D for each player,
 		// ignoring players with 0/0 stats. Should produce the same
 		// format as normal scoreboards, just with K/D added.
 		var scores = []
 		for (const game of loadedFiles) {
+			//console.log('---')
+			//console.log(`### Working on game: ${game.endTime}\n`)
+			//console.log('---')
 			for (const score of game.scores) {
+				//console.log('---')
+				//console.log(`\nPlayer: ${score.name} (${score.id})`)
+				//console.log(`FILE    - Sips: ${score.sips} - ${score.kills}/${score.deaths},  knifes: ${score.knifekills}/${score.knifed}`)
 				let player = scores.find((p) => {
 					return p.id == score.id
 				})
-				let exists = player ? true : false
+				let exists = player === undefined ? false : true
 				let kd = 1
 
+				if (exists)
+					//console.log(`MEMORY  - Sips: ${player.sips} - ${player.kills}/${player.deaths},  knifes: ${player.knifekills}/${player.knifed}`)
+
+				// Ignore players with 0/0.
+				// If players have 0 deaths, use kills as KD.
+				// If players have 0 kills, KD is 1/deaths. TODO: why did I do this again..?
 				if (score.kills == 0 && score.deaths == 0) {
 					continue
 				} else if (score.kills > 0 && score.deaths == 0)
@@ -194,6 +209,7 @@ class Tracker extends EventEmitter {
 				else 
 					kd = score.kills / score.deaths
 
+				// If we didn't already handle this player, create it freshly
 				if (! exists) {
 					player = {
 						name: score.name,
@@ -209,6 +225,9 @@ class Tracker extends EventEmitter {
 						knifed: score.knifed,
 						sips: score.sips
 					} 
+
+					//console.log(`CREATED - Sips: ${player.sips} - ${player.kills}/${player.deaths},  knifes: ${player.knifekills}/${player.knifed}`)
+					scores.push(player)
 				}
 
 				if (exists) {
@@ -217,13 +236,11 @@ class Tracker extends EventEmitter {
 					player.deaths += score.deaths
 					player.teamkills += score.teamkills
 					player.suicides += score.suicides
-					player.sips += score.sips
-					player.knifekills =+ score.knifed
+					player.knifekills += score.knifekills
 					player.knifed += score.knifed
 					player.sips += score.sips
 					player.games++
-				} else {
-					scores.push(player)
+					//console.log(`UPDATED - Sips: ${player.sips} - ${player.kills}/${player.deaths},  knifes: ${player.knifekills}/${player.knifed}`)
 				}
 			}
 		}
@@ -233,7 +250,7 @@ class Tracker extends EventEmitter {
 			player.kd = player.kd.toFixed(2)
 		})
 
-		scores.sort((a, b) => a[sortBy] - b[sortBy])
+		scores.sort((a, b) => b[sortBy] - a[sortBy])
 
 		return scores
 	}
