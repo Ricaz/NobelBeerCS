@@ -235,14 +235,6 @@ class Tracker extends EventEmitter {
 
 		scores.sort((a, b) => a[sortBy] - b[sortBy])
 
-		//let totalSips = 0
-		//for (const player of scores) {
-		//	log.score(`${player.name}, ${player.kd}`)
-		//	totalSips += player.sips
-		//}
-		//console.log(scores)
-		//log.score(`Total sips: ${totalSips}`)
-
 		return scores
 	}
 
