@@ -2,21 +2,59 @@
 export default {
   data() {
     return {
+      stats: {},
+      state: 'idle',
       status: "not connected",
       theme: "default",
       wslog: [],
       volume: 30,
       scores: [],
-      audioElements: []
-      }
+      audioElements: [],
+      loadedFiles: 0
+    }
   },
 
   computed: {
+    showStats() {
+      if (this.state == 'idle' || this.state == 'ended')
+        return true
+      else
+        return false
+    },
     activeScores() {
-      return this.scores.filter(player => player.active == true)
+      let board = {}
+      board.scores = this.scores.filter(player => player.active == true)
+      board.title = "Scoreboard"
+      board.show = true
+      board.show = this.state == 'live' || this.state == 'idle' ? true : false
+      return board
     },
     inactiveScores() {
-      return this.scores.filter(player => player.active == false)
+      let board = {}
+      board.scores = this.scores.filter(player => player.active == false)
+      board.title = "Inactive/offline"
+      board.show = true
+      return board
+    },
+    todayScores() {
+      let board = {}
+      board.scores = this.stats.today || []
+      board.scores.forEach((p) => { p.team = 'neutral' })
+      board.title = "Stats for today"
+      board.show = this.state == 'ended' ? true : false
+      if (! board.scores.length)
+        board.show = false
+      return board
+    },
+    lanScores() {
+      let board = {}
+      board.scores = this.stats.lan || []
+      board.scores.forEach((p) => { p.team = 'neutral' })
+      board.title = "Stats for this LAN"
+      board.show = this.state == 'ended' ? true : false
+      if (! board.scores.length)
+        board.show = false
+      return board
     }
   },
 
@@ -59,6 +97,14 @@ export default {
         case "scoreboard":
           this.scores = data.args[0].scores
           break
+        case "filelist":
+          this.preloadAudio(data.data)
+          break
+        case "stats":
+          this.updateStats(data.data)
+          break
+        case "state":
+          this.changeState(data.data)
         case "unpause":
         case "newround":
         case "round":
@@ -67,6 +113,20 @@ export default {
       }
 
       this.playMedia(data.media)
+    },
+
+    updateStats: function (data) {
+      this.stats = data 
+      this.stats.lan = this.stats.lan.sort((a, b) => { return b.sips - a.sips })
+      this.stats.today = this.stats.today.sort((a, b) => { return b.sips - a.sips })
+      console.log('stats', this.stats)
+    },
+
+    changeState: function (state) {
+      this.state = state
+      if (this.state == 'ended') {
+         
+      }
     },
 
     playMedia: function (file) {
@@ -137,6 +197,19 @@ export default {
       this.audioElements.forEach((audio, i, arr) => {
         audio.volume = this.volume / 100
       })
+    },
+
+    loadAudioFile: function(url) {
+      let audio = new Audio()
+      audio.addEventListener('canplaythrough', function() {
+        loadedFiles++
+
+      }, false)
+      audio.src = url
+    },
+
+    preloadAudio: function(soundFiles) {
+      // console.log("Loading files:", soundFiles)
     }
   }
 }
@@ -147,65 +220,33 @@ export default {
     <div class="row">
       <div class="col-12 pt-4">
         <div class="container-fluid">
-          <div class="status">Status: <pre class="d-inline">{{ status }}</pre></div>
+          <div class="status">
+            Connection: <pre class="d-inline">{{ status }}</pre><br />
+            State: <pre class="d-inline">{{ state }}</pre>
+          </div>
           <div class="volume">
-            <input type="range" name="volume" ref="volume" step="5" id="volume" min="0" max="100" v-model="volume" v-on:change="volumeChange" />
+            <input class="slider" type="range" name="volume" ref="volume" step="5" id="volume" min="0" max="100" v-model="volume" v-on:change="volumeChange" />
             <label for="volume">Volume</label>
+
           </div>
-          <div class="scores-active pb-5">
-            <h1 class="text-center">Scoreboard</h1>
-            <table class="table table-fluid">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>K/D</th>
-                  <th>Knife K/D</th>
-                  <th>TKs</th>
-                  <th>Suicides</th>
-                  <th>Sips</th>
-                  <th>Rounds</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="player in activeScores" :class="player.team">
-                  <td>{{ player.name }}</td>
-                  <td><b>{{ player.kills }}</b> / {{ player.deaths }}</td>
-                  <td><b>{{ player.knifekills }}</b> / {{ player.knifed }}</td>
-                  <td>{{ player.teamkills }}</td>
-                  <td>{{ player.suicides }}</td>
-                  <td>{{ player.sips }}</td>
-                  <td>{{ player.rounds }}</td>
-                </tr>
-              </tbody>
-            </table>
+
+          <div class="row w-100">
+            <div v-if="todayScores.show" class="scores-today pb-5 col-6">
+              <Scoreboard :scoreboard="todayScores.scores" :title="todayScores.title" />
+            </div>
+            <div v-if="lanScores.show" class="scores-lan pb-5 col-6">
+              <Scoreboard :scoreboard="lanScores.scores" :title="lanScores.title" />
+            </div>
           </div>
-          <div class="scores-inactive mt-5">
-            <h1 class="text-center">Inactive/offline</h1>
-            <table class="table table-dark table-fluid">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>K/D</th>
-                  <th>Knife K/D</th>
-                  <th>TKs</th>
-                  <th>Suicides</th>
-                  <th>Sips</th>
-                  <th>Rounds</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="player in inactiveScores" :class="player.team">
-                  <td>{{ player.name }}</td>
-                  <td><b>{{ player.kills }}</b> / {{ player.deaths }}</td>
-                  <td><b>{{ player.knifekills }}</b> / {{ player.knifed }}</td>
-                  <td>{{ player.teamkills }}</td>
-                  <td>{{ player.suicides }}</td>
-                  <td>{{ player.sips }}</td>
-                  <td>{{ player.rounds }}</td>
-                </tr>
-              </tbody>
-            </table>
+          <div v-if="activeScores.show" class="scores-active pb-5">
+            <Scoreboard :scoreboard="activeScores.scores" :title="activeScores.title" />
           </div>
+          <!--
+          <div class="scores-inactive pb-5">
+            <Scoreboard v-if="inactiveScores.show" :scoreboard="inactiveScores.scores" :title="inactiveScores.title" />
+          </div>
+          -->
+
           <audio ref="audio" id="audio">Audio not available</audio>
           <video ref="video" class="hidden" id="video">Video not available</video>
         </div>
@@ -223,6 +264,7 @@ export default {
 
 .status { 
 	font-family: monospace;
+	float: left;
 }
 
 .table td, .table th {
@@ -236,6 +278,10 @@ export default {
 
 table th {
 	color: white;
+}
+
+.table tr.neutral {
+  color: white;
 }
 
 .table tr.UNASSIGNED {
@@ -293,7 +339,46 @@ video {
 
 .volume {
 	display: inline-block;
-	position: absolute; right: 12pt;
 	z-index: 10000;
+  width: 200px;
+	float: right;
+}
+
+.volume label {
+	float: right;
+}
+
+.slider {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 10px;
+  border-radius: 5px;
+  background: #d3d3d3;
+  outline: none;
+  opacity: 0.7;
+  -webkit-transition: .2s;
+  transition: opacity .2s;
+}
+
+.slider:hover {
+  opacity: 1;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  background: #04AA6D;
+  cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  background: #04AA6D;
+  cursor: pointer;
 }
 </style>
