@@ -2,6 +2,7 @@ const log  = require('./utility').log
 const fs   = require('fs')
 const path = require('path')
 const glob = require('glob')
+const EventEmitter = require('node:events')
 
 class Player {
 	constructor(args) {
@@ -20,11 +21,13 @@ class Player {
 	}
 }
 
-class Tracker {
+class Tracker extends EventEmitter {
 	constructor(args) {
+		super()
 		this.startTime
 		this.endTime
 		this.running = false
+		this.state = 'idle'
 		this.board
 		this.historyDir = path.resolve(__dirname, '../../history')
 
@@ -41,6 +44,28 @@ class Tracker {
 		//this.board.addPlayer('STEAM_0:1:11611559', 'ALSTRUP', 'CT')
 	}
 
+	changeState(newState) {
+		this.state = newState
+		this.emit('state', this.state)
+
+		if (newState == 'ended') {
+			this.emit('stats', this.generatePauseStats())
+
+			// If a game ended, change back to idle after 30 hours
+			setTimeout(() => {
+				this.state = 'idle'
+				this.emit('state', this.state)
+			}, 3600 * 30 * 1000)
+		}
+	}
+
+	generatePauseStats() {
+		let lanStats = this.getStatsInterval()
+		let todayStats = this.getStatsInterval(3600 * 16 * 1000)
+
+		return { today: todayStats, lan: lanStats }
+	}
+
 	autoBalance(numGames = 0) {
 		let scores = this.getStats(numGames)
 		let response = []
@@ -54,7 +79,7 @@ class Tracker {
 			if (! found)
 				return false
 
-			console.log(`${found.name} active? ${found.active}. Team? ${found.team}`)
+			console.log(`"${found.name}"  Active? ${found.active}. Team? ${found.team}`)
 			if (found && (found.team == 'CT' || found.team == 'TERRORIST'))
 				return true
 			else
@@ -88,6 +113,33 @@ class Tracker {
 		return response
 	}
 
+	// Generate stats for multiple games. Iterates back over games
+	// that fit within `interval` window from latest game. For example,
+	// if you set `interval` to 12 hours, you could get all stats from current session,
+	// or with `interval` to 3 days, get all stats for the entire LAN.
+	//
+	// Defaults to 3 days.
+	getStatsInterval(interval = 3 * 86400 * 1000) {
+		// Gets array of cleaned and desc-sorted filenames without .json extension
+		const files = glob.sync(`${this.historyDir}/*.json`)
+			.map((file) => { return path.basename(file, '.json') })
+			.sort((a, b) => { return b - a })
+
+		const now = Date.now()
+		let delta = now - 2 * interval
+		let numGames = 0
+		let current
+
+		while ((current = files.shift()) > delta) {
+			numGames++
+			delta = current - interval
+		}
+
+		return this.getStats(numGames)
+	}
+
+	// Loads the latest `numGames` scoreboards and adds them together.
+	// Also calculates K/D for each player.
 	getStats(numGames = 0, sortBy = 'sips') {
 		log.score(`called tracker.getStats(${numGames}, ${sortBy})`)
 		var files = glob.sync(`${this.historyDir}/*.json`)
@@ -98,7 +150,7 @@ class Tracker {
 
 		// Get files by name (cant sort by ctime anymore as i fucked and deleted everything)
 		const gameFiles = files.sort((a, b) => path.basename(a, '.json') < path.basename(b, '.json'))
-			
+
 		// Load files until we have requested number of games (with >6 players)
 		while (loadedFiles.length < numGames) {
 			let game
@@ -117,7 +169,7 @@ class Tracker {
 				numGames--
 				continue
 			}
-			
+
 			loadedFiles.push(game)
 		}
 
@@ -148,6 +200,8 @@ class Tracker {
 						id: score.id,
 						kd: kd,
 						games: 1,
+						kills: score.kills,
+						deaths: score.deaths,
 						teamkills: score.teamkills,
 						suicides: score.suicides,
 						sips: score.sips,
@@ -159,6 +213,8 @@ class Tracker {
 
 				if (exists) {
 					player.kd += kd
+					player.kills += score.kills
+					player.deaths += score.deaths
 					player.teamkills += score.teamkills
 					player.suicides += score.suicides
 					player.sips += score.sips
@@ -179,18 +235,10 @@ class Tracker {
 
 		scores.sort((a, b) => a[sortBy] - b[sortBy])
 
-		//let totalSips = 0
-		//for (const player of scores) {
-		//	log.score(`${player.name}, ${player.kd}`)
-		//	totalSips += player.sips
-		//}
-		//console.log(scores)
-		//log.score(`Total sips: ${totalSips}`)
-
 		return scores
 	}
 
-	// Loads newest scoreboard. This enabled us to recover a live game
+	// Loads newest scoreboard. This enables us to recover a live game
 	// in case the web app crashes. Stats during the downtime will be lost.
 	loadScoreboard() {
 		var path = `${this.historyDir}/*.json`
@@ -213,6 +261,7 @@ class Tracker {
 				this.startTime = loaded.startTime
 				this.board.players = loaded.scores
 				this.running = true
+				this.changeState('live')
 				return
 			}
 		}
@@ -236,6 +285,7 @@ class Tracker {
 			log.score('Game starting!')
 			this.startTime = Date.now()
 			this.running = true
+			this.changeState('live')
 			this.board.reset()
 		}
 
@@ -286,10 +336,9 @@ class Tracker {
 		else if (cmd == 'suicide')
 			this.board.handleSuicide(args[0])
 
-		else if (cmd == 'mapend') {
+		else if (cmd == 'mapend' || cmd == 'mapchange') {
 			log.score(`Game ended!`)
 			this.endTime = Date.now()
-			this.running = false
 
 			// Write final scoreboard
 			var filename = `${this.historyDir}/${this.startTime}.json`
@@ -299,6 +348,9 @@ class Tracker {
 				else 
 					log.score(`Wrote final scoreboard to file ${filename}`)
 			})
+
+			this.running = false
+			this.changeState('ended')
 
 			return
 		}

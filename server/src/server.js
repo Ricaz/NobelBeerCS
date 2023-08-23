@@ -5,23 +5,24 @@
 require('dotenv').config()
 
 // Load system/npm modules
-const net	= require('net')
-const WSs	= require('websocket').server
-const exec	= require('child_process').exec
-const fs	= require('fs')
+const net  = require('net')
+const WSs  = require('websocket').server
+const exec = require('child_process').exec
+const fs   = require('fs')
+const path = require('path')
 
 // Load custom modules
-const http	= require('./lib/http-server')
-const log	= require('./lib/utility').log
+const http         = require('./lib/http-server')
+const log          = require('./lib/utility').log
 const scoretracker = require('./lib/scoretracker')
 
 // Global vars
-var clientsWs	= []
-var clientsTcp	= []
-var readyTcp	= false
-var readyWs		= false
-var connID		= 0
-var settings	= {
+var clientsWs  = []
+var clientsTcp = []
+var readyTcp   = false
+var readyWs    = false
+var connID     = 0
+var settings   = {
 	theme: 'default'
 }
 
@@ -29,6 +30,15 @@ const mediaPath = 'dist/assets/media/'
 var themes		= loadThemes()
 
 var tracker = new scoretracker()
+tracker.on('state', (state) => {
+	clientsWs.forEach((client) => { client.send(JSON.stringify({ cmd: 'state', data: state })) })
+})
+tracker.on('stats', (stats) => {
+	clientsWs.forEach((client) => { client.send(JSON.stringify({ cmd: 'stats', data: stats })) })
+})
+tracker.on('game-ended', () => {
+	clientsWs.forEach((client) => { client.send(JSON.stringify({ cmd: 'game-ended' })) })
+})
 
 // Create TCP socket server and set up event handling on it
 var tcp = net.createServer((sock) => {
@@ -41,6 +51,14 @@ var tcp = net.createServer((sock) => {
 	sock.on('data', (data) => {
 		log.tcp(data)
 		let message = JSON.parse(data)
+
+		if (message.cmd == 'getfullstats') {
+			console.log(`opts: ${message.args}`)
+			let stats = tracker.getStatsInterval(...message.args)
+			console.log('getfullstats: ', stats)
+			if (stats)
+				clientsWs.forEach((client) => { client.send(JSON.stringify(stats)) })
+		}
 
 		if (message.cmd == 'getstats') {
 			console.log(`opts: ${message.args}`)
@@ -58,9 +76,6 @@ var tcp = net.createServer((sock) => {
 		}
 
 		// Scoreboard
-		// TODO: Currently, all events are forwarded to WS, *and* full state is submitted
-		// on every scoreboard change. This is bad. We should send the full state on 
-		// connection, and then only delta updates.
 		tracker.handleEvent(message)
 		if (tracker.running || true) {
 			var fullState = { cmd: 'scoreboard', args: [ tracker.getScoreboard() ] }
@@ -80,10 +95,11 @@ var tcp = net.createServer((sock) => {
 			clientsWs.forEach((client) => { client.send(JSON.stringify(message)) })
 		}
 	})
+
 	sock.on('error', (err) => {
 		log.tcp(err)
 	})
-	
+
 	clientsTcp.push(sock)
 	sock.pipe(sock)
 })
@@ -118,6 +134,9 @@ ws.on('connect', (conn) => {
 	var fullState = { cmd: 'scoreboard', args: [ tracker.getScoreboard() ] }
 	conn.send(JSON.stringify(fullState))
 
+  // Send list of files
+	conn.send(JSON.stringify({ cmd: 'filelist', data: getMediaList() }))
+
 	conn.on('message', (data) => {
 		log.ws(`[${conn.id}]: ${data}`)
 	})
@@ -127,22 +146,43 @@ ws.on('connect', (conn) => {
 	})
 })
 
+function getAllFiles(dirPath, arrayOfFiles) {
+	var files = fs.readdirSync(dirPath)
+	var arrayOfFiles = arrayOfFiles || []
+
+	files.forEach(function(file) {
+		if (fs.statSync(dirPath + "/" + file).isDirectory())
+			arrayOfFiles = getAllFiles(dirPath + "/" + file, arrayOfFiles)
+		else
+			arrayOfFiles.push(path.join(__dirname, dirPath, "/", file))
+	})
+
+	return arrayOfFiles
+}
+
+function getMediaList() {
+	var dir = `${mediaPath}/${settings.theme}`
+	return getAllFiles(dir).map((a) => {
+		return a.replace(/.*(assets.*)/, '$1')
+	})
+}
+
 // Checks if media file exists for event.
 // If using a theme, falls back to default in case of missing file.
 function getMedia(event) {
 	let media = []
 	try {
-		var path = `${mediaPath}/${settings.theme}/${event}`
-		if (! fs.existsSync(path)) {
-			path = `${mediaPath}/default/${event}` 
-			if (! fs.existsSync(path))
+		var dir = `${mediaPath}/${settings.theme}/${event}`
+		if (! fs.existsSync(dir)) {
+			dir = `${mediaPath}/default/${event}` 
+			if (! fs.existsSync(dir))
 				return false
 		}
 
-		media = fs.readdirSync(path)
+		media = fs.readdirSync(dir)
 		let random = media[Math.floor(Math.random() * media.length)]
 
-		if (path.includes('default'))
+		if (dir.includes('default'))
 			return `assets/media/default/${event}/${random}`
 		else
 			return `assets/media/${settings.theme}/${event}/${random}`
