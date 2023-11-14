@@ -18,22 +18,23 @@ use Chromecast for this.  Check out the separate [README in server/](server/) (W
 
 ## Rules
 
-The rules for the game is as follows:
+General rules:
+* When you get a kill, start drinking immediately
+* You must always drink with your keyboard hand
+* When you get knifed, stand on your chair and say "I was knifed by NAME" (probably Emil)
 
-* There are 20 sips in one beer (33cl)
-* When you drink, you must do so with your keyboard hand, so you can't move 
-while drinking
+Drinking rules:
+* There are 20 sips in a 33cl beer
 * At the start of each round, everyone drinks 1 sip (*FÆLLES KÅÅÅL*)
-* You drink 2 sips when you get a kill
-* You drink 1 sip when you die
-* You drink half a beer if you commit suicide
-* You finish your beer if you kill a teammate
-* When you get knifed, you must stand on your chair and say "I was knifed by <name>"
+* Get a kill: 2 sips
+* Get killed: 1 sip
+* Suicide: 10 sips
+* Teamkill: Finish your beer!
 
 ## Main mod features
 
 At first, we just wanted to make a mod that forced people to freeze when they got 
-a kill, to prevent people from cheating (bind +forward on their mouse, for example).
+a kill, to prevent people from cheating (bind `+forward` on their mouse, for example).
 
 Here is a list of current features:
 * When you get a kill, you freeze for 4-5 seconds
@@ -48,17 +49,19 @@ Of course, everyone is encouraged to say *SKÅL* to thier victims/killers!
 To add to the above (which is probably the best part of the mod), we also have 
 lots of additional features to add to the chaos.
 
+All the commands are toggleable.
+
 * Half-way team switch
   * Everyone will swap teams mid-game (without warning) half-way through the match
-* Antizoompistol (`nobel_antizoompistol`, defaults to `1`)
+* Antizoompistol (`nobel_antizoompistol`)
   * Punishes people using AWP or autosnipers by slapping them for a random amount
-* Technoflash (`nobel_flashprotection`, defaults to `1`)
+* Technoflash (`nobel_flashprotection`)
   * Nerfs flashbangs at the start of the round, to prevent griefing new players
     who don't know the way out of spawn while blind 
-* LEJFRUNDE (`nobel_knife`, toggleable)
+* LEJFRUNDE (`nobel_knife`)
   * In the next round, only knife and grenade *kills* are allowed
   * Killing people with guns counts as a teamkill
-* Rambo-mode (`nobel_rambo`, experimental)
+* Rambo-mode (`nobel_rambo`)
   * In the next round, everyone gets an M249 with infinite ammo and a continuous supply of HE grenades
   * You cannot stop firing the gun
   * Kinda glitchy, especially if people try to circumvent the safeguards against using other weapons 
