@@ -429,7 +429,6 @@ public event_zoompistol(id) {
 
     new tmp_param[1]
     tmp_param[0] = owner_id
-    client_print(0, print_console, "$$$ zoompistol event triggered %d", owner_id)
     set_task(0.1, "zoomslap", 9191, tmp_param, sizeof(tmp_param))
 
     return HAM_HANDLED
@@ -445,25 +444,18 @@ public event_mildzoompistol(id) {
 
     new tmp_param[1]
     tmp_param[0] = owner_id
-    client_print(0, print_console, "$$$ zoompistol event triggered %d", owner_id)
     set_task(0.1, "zoomslap_mild", 9191, tmp_param, sizeof(tmp_param))
 
     return HAM_HANDLED
 }
 
 public zoomslap_mild(const params[], id) {
-    client_print(0, print_console, "$$$ zoomslap (mild) triggered")
-    client_print(0, print_console, "$$$ params %d", params[0])
     new player = params[0]
-    client_print(0, print_console, "$$$ player_id %d", player)
     user_slap(player, random_num(10, 45), 1)
 }
 
 public zoomslap(const params[], id) {
-    client_print(0, print_console, "$$$ zoomslap triggered")
-    client_print(0, print_console, "$$$ params %d", params[0])
     new player = params[0]
-    client_print(0, print_console, "$$$ player_id %d", player)
     user_slap(player, random_num(17, 85), 1)
 }
 
@@ -862,7 +854,7 @@ public hook_death()
             client_print(0, print_chat, "Emil har en gennemsnitlig penis.")
             send_event("emilknife", killersteamid, victimsteamid)
         } else if (equali(steamid, "STEAM_0:1:39235412")) {
-            client_print(0, print_chat, "BOOOB HAN KNEPPER")
+            client_print(0, print_chat, "CHRIS DOLKER")
             send_event("chrisknife", killersteamid, victimsteamid)
         } else if (equali(steamid, "STEAM_0:1:11318024")) {
             client_print(0, print_chat, "BOOOB HAN KNEPPER")
