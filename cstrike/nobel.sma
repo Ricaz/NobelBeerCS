@@ -960,7 +960,6 @@ public set_user_speed(id)
     if (freezetime || cannot_move[id] == true) {
         new user_name[32]
         get_user_name(id, user_name, charsmax(user_name))
-        log_amx("Freezing player due to freezetime or by kill: %s, freezetime: %i, cannot_move[%i]: %i", user_name, freezetime, id, cannot_move[id])
         set_user_maxspeed(id, 0.1)
     }
     else {
@@ -1253,34 +1252,48 @@ public receive_balanced_players()
         log_amx("Received data: %s", resbuf)
 
         new players[32], i, j, playerCount, resCount
-        get_players(players, playerCount, "ach") 
+        get_players(players, playerCount, "ch") 
 
         new JSON:response = json_parse(resbuf)
         resCount = json_array_get_count(response)
-        log_amx("resCount: %s", resCount)
+        log_amx("resCount: %d", resCount)
 
+        /* For each player in response JSON */
         for (i = 0; i < resCount; i++) {
             new JSON:obj = json_array_get_value(response, i)
             new id[64] 
             new team[32] 
+
             json_object_get_string(obj, "steamid", id, 63)
             json_object_get_string(obj, "team", team, 31)
-            log_amx("steamid: %s   team: %s", id, team)
+            log_amx("steamid: %s   newteam: %s", id, team)
 
+            /* For each player in server */
             for (j = 0; j < playerCount; j++) {
+                new playerName[64]
                 new authid[64]
+                new curTeam[64]
+
                 get_user_authid(players[j], authid, charsmax(authid))
+                get_user_name(players[j], playerName, charsmax(playerName))
+
+                new CsTeams:curTeamId = cs_get_user_team(players[j])
+                if (curTeamId == CS_TEAM_T)
+                    curTeam = "T"
+                else if (curTeamId == CS_TEAM_CT)
+                    curTeam = "CT"
+
                 if (equal(id, authid)) {
-                    log_amx("Player %s, team: %s", id, team)
-                    if (equali(team, "CT")) {
-                        log_amx("Moving %s (%d) to %s", id, j, team)
+                    log_amx("Player %s, ID %s, curTeam: %s, newteam: %s", playerName, id, curTeam, team)
+
+                    if (equali(team, "CT") && ! equali(curTeam, "CT")) {
+                        log_amx("Moving %s (%d) from %s to %s", playerName, j, curTeam, team)
                         cs_set_user_team(players[j], CS_TEAM_CT)
-                        //flash_player(j, 50, 50, 255)
-                    } else if (equali(team, "T")) {
+                    } else if (equali(team, "T") && ! equali(curTeam, "T")) {
                         cs_set_user_team(players[j], CS_TEAM_T)
-                        log_amx("Moving %s (%d) to %s", id, j, team)
-                        //flash_player(j, 255, 50, 50)
+                        log_amx("Moving %s (%d) from %s to %s", playerName, j, curTeam, team)
                     }
+
                     break
                 }
             }
