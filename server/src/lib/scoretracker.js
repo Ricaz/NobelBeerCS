@@ -80,7 +80,7 @@ class Tracker extends EventEmitter {
 				return false
 
 			console.log(`"${found.name}"  Active? ${found.active}. Team? ${found.team}`)
-			if (found && (found.team == 'CT' || found.team == 'TERRORIST'))
+			if (found && found.active && (found.team == 'CT' || found.team == 'TERRORIST'))
 				return true
 			else
 				return false
