@@ -143,7 +143,9 @@ ws.on('connect', (conn) => {
 		log.ws(`Current state '${tracker.state}', sending idle stats`)
 		conn.send(JSON.stringify({ cmd: 'state', data: 'idle' }))
 		conn.send(JSON.stringify({ cmd: 'stats', data: tracker.generateIdleStats() }))
-	}
+	} else if (tracker.state === 'live') {
+		conn.send(JSON.stringify({ cmd: 'state', data: 'live' }))
+  }
 
 	// Send list of files
 	conn.send(JSON.stringify({ cmd: 'filelist', data: getMediaList() }))
