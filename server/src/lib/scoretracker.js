@@ -27,9 +27,14 @@ class Tracker extends EventEmitter {
 		this.startTime
 		this.endTime
 		this.running = false
-		this.state = 'idle'
 		this.board
 		this.historyDir = path.resolve(__dirname, '../../history')
+
+		// Set state 'ended' if less than 30 hours since last game
+		if (Date.now() - this.getLatestGameDate() < (3600*30*1000))
+			this.state = 'ended'
+		else
+			this.state = 'idle'
 
 		// Ensure history dir exists
 		if (! fs.existsSync(this.historyDir))
@@ -57,6 +62,12 @@ class Tracker extends EventEmitter {
 				this.emit('state', this.state)
 			}, 3600 * 30 * 1000)
 		}
+	}
+
+	generateIdleStats() {
+		let totalStats = this.getStats()
+
+		return { full: totalStats }
 	}
 
 	generatePauseStats() {
@@ -113,6 +124,16 @@ class Tracker extends EventEmitter {
 		return response
 	}
 
+	getLatestGameDate() {
+		const latest = glob.sync(`${this.historyDir}/*.json`)
+			.map((file) => { return path.basename(file, '.json') })
+			.sort((a, b) => { return b - a })
+			[0]
+
+		log.score(`Latest game: ${latest}`)
+		return latest
+	}
+
 	// Generate stats for multiple games. Iterates back over games
 	// that fit within `interval` window from latest game. For example,
 	// if you set `interval` to 12 hours, you could get all stats from current session,
@@ -135,8 +156,10 @@ class Tracker extends EventEmitter {
 			delta = current - interval
 		}
 
-		log.score(`called tracker.getStatsInterval(${interval})`)
-		return this.getStats(numGames)
+		if (numGames > 0)
+			return this.getStats(numGames)
+		else 
+			return []
 	}
 
 	// Loads the latest `numGames` scoreboards and adds them together.
@@ -181,25 +204,16 @@ class Tracker extends EventEmitter {
 		// format as normal scoreboards, just with K/D added.
 		var scores = []
 		for (const game of loadedFiles) {
-			//console.log('---')
-			//console.log(`### Working on game: ${game.endTime}\n`)
-			//console.log('---')
 			for (const score of game.scores) {
-				//console.log('---')
-				//console.log(`\nPlayer: ${score.name} (${score.id})`)
-				//console.log(`FILE    - Sips: ${score.sips} - ${score.kills}/${score.deaths},  knifes: ${score.knifekills}/${score.knifed}`)
 				let player = scores.find((p) => {
 					return p.id == score.id
 				})
 				let exists = player === undefined ? false : true
 				let kd = 1
 
-				if (exists)
-					//console.log(`MEMORY  - Sips: ${player.sips} - ${player.kills}/${player.deaths},  knifes: ${player.knifekills}/${player.knifed}`)
-
 				// Ignore players with 0/0.
 				// If players have 0 deaths, use kills as KD.
-				// If players have 0 kills, KD is 1/deaths. TODO: why did I do this again..?
+				// If players have 0 kills, KD is 1/deaths
 				if (score.kills == 0 && score.deaths == 0) {
 					continue
 				} else if (score.kills > 0 && score.deaths == 0)
@@ -226,7 +240,6 @@ class Tracker extends EventEmitter {
 						sips: score.sips
 					} 
 
-					//console.log(`CREATED - Sips: ${player.sips} - ${player.kills}/${player.deaths},  knifes: ${player.knifekills}/${player.knifed}`)
 					scores.push(player)
 				}
 
@@ -240,7 +253,6 @@ class Tracker extends EventEmitter {
 					player.knifed += score.knifed
 					player.sips += score.sips
 					player.games++
-					//console.log(`UPDATED - Sips: ${player.sips} - ${player.kills}/${player.deaths},  knifes: ${player.knifekills}/${player.knifed}`)
 				}
 			}
 		}
