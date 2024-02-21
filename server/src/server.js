@@ -135,7 +135,15 @@ ws.on('connect', (conn) => {
 	conn.send(JSON.stringify(fullState))
 
 	log.ws('Sending stats')
-	conn.send(JSON.stringify({ cmd: 'stats', data: tracker.generatePauseStats() }))
+	if (tracker.state === 'ended') {
+		log.ws(`Current state '${tracker.state}', sending pause stats`)
+		conn.send(JSON.stringify({ cmd: 'state', data: 'ended' }))
+		conn.send(JSON.stringify({ cmd: 'stats', data: tracker.generatePauseStats() }))
+	} else if (tracker.state === 'idle') {
+		log.ws(`Current state '${tracker.state}', sending idle stats`)
+		conn.send(JSON.stringify({ cmd: 'state', data: 'idle' }))
+		conn.send(JSON.stringify({ cmd: 'stats', data: tracker.generateIdleStats() }))
+	}
 
 	// Send list of files
 	conn.send(JSON.stringify({ cmd: 'filelist', data: getMediaList() }))
@@ -209,7 +217,6 @@ function loadThemes() {
 }
 
 // Helper functions
-// RNG
 function rng(min, max) {
 	min = Math.floor(min)
 	max = Math.floor(max) + 1

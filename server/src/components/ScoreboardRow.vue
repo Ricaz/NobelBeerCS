@@ -7,9 +7,8 @@ defineProps([ 'player' ])
 		<td>{{ player.name }}</td>
 		<td><b>{{ player.kills }}</b> / {{ player.deaths }}</td>
 		<td><b>{{ player.knifekills }}</b> / {{ player.knifed }}</td>
-		<td>{{ player.teamkills }}</td>
-		<td>{{ player.suicides }}</td>
+		<td>{{ player.teamkills }} / {{ player.suicides }}</td>
 		<td>{{ (player.sips / 20).toFixed(1) }}</td>
-		<td>{{ player.games }}</td>
+		<td>{{ player.games || player.rounds }}</td>
 	</tr>
 </template>

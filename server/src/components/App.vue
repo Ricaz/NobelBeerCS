@@ -10,7 +10,8 @@ export default {
       volume: 30,
       scores: [],
       audioElements: [],
-      loadedFiles: 0
+      loadedFiles: 0,
+      defaultHeaders: [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Maps/rounds" ]
     }
   },
 
@@ -23,35 +24,52 @@ export default {
     },
     activeScores() {
       let board = {}
+      board.headers = [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Rounds" ]
       board.scores = this.scores.filter(player => player.active == true)
       board.title = "Scoreboard"
       board.show = true
-      board.show = this.state == 'live' || this.state == 'idle' ? true : false
+      board.show = this.state == 'live' || this.state == 'ended' ? true : false
+      if (! board.scores.length)
+        board.show = false
       return board
     },
     inactiveScores() {
       let board = {}
+      board.headers = [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Rounds" ]
       board.scores = this.scores.filter(player => player.active == false)
       board.title = "Inactive/offline"
       board.show = true
       return board
     },
+    totalScores() {
+      let board = {}
+      board.headers = [ "Name (last seen)", "K/D", "Knife K/D", "TK/S", "Øls", "Maps" ]
+      board.scores = this.stats.full ?? []
+      board.scores.forEach((p) => { p.team = 'neutral' })
+      board.title = "No LAN active. All stats:"
+      board.show = this.state == 'idle' ? true : false
+      if (! board.scores.length)
+        board.show = false
+      return board
+    },
     todayScores() {
       let board = {}
-      board.scores = this.stats.today || []
+      board.headers = [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Maps" ]
+      board.scores = this.stats.today ?? []
       board.scores.forEach((p) => { p.team = 'neutral' })
       board.title = "Stats for today"
-      board.show = this.state == 'ended' || this.state == 'idle' ? true : false
+      board.show = this.state == 'ended' ? true : false
       if (! board.scores.length)
         board.show = false
       return board
     },
     lanScores() {
       let board = {}
-      board.scores = this.stats.lan || []
+      board.headers = [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Maps" ]
+      board.scores = this.stats.lan ?? []
       board.scores.forEach((p) => { p.team = 'neutral' })
       board.title = "Stats for this LAN"
-      board.show = this.state == 'ended' || this.state == 'idle' ? true : false
+      board.show = this.state == 'ended' ? true : false
       if (! board.scores.length)
         board.show = false
       return board
@@ -71,12 +89,12 @@ export default {
       const socket = new WebSocket(import.meta.env.VITE_WEBSOCKET_URI, 'beercs')
 
       socket.addEventListener('open', (event) => {
-        console.log('WebSocket conncted!', event)
+        console.log('WebSocket connected!', event)
         this.status = 'connected'
       })
 
       socket.addEventListener('close', (event) => {
-        console.log('WebSocket disconncted!', event)
+        console.log('WebSocket disconnected!', event)
         this.status = 'disconnected'
         setTimeout(() => { this.connectWebSocket() }, 2000)
       })
@@ -91,7 +109,8 @@ export default {
 
     handleMessage: function (msg) {
       let data = JSON.parse(msg.data)
-      console.log('Recieved socket data: ', data)
+      if (process.env.NODE_ENV == 'development')
+        console.log('Recieved socket data: ', data)
 
       switch (data.cmd) {
         case "scoreboard":
@@ -117,9 +136,15 @@ export default {
 
     updateStats: function (data) {
       this.stats = data 
-      this.stats.lan = this.stats.lan.sort((a, b) => { return b.sips - a.sips })
-      this.stats.today = this.stats.today.sort((a, b) => { return b.sips - a.sips })
-      console.log('stats', this.stats)
+      if (this.stats.lan)
+        this.stats.lan = this.stats.lan.sort((a, b) => { return b.sips - a.sips })
+      if (this.stats.today)
+        this.stats.today = this.stats.today.sort((a, b) => { return b.sips - a.sips })
+      if (this.stats.full)
+        this.stats.full = this.stats.full.sort((a, b) => { return b.sips - a.sips })
+
+      if (process.env.NODE_ENV == 'development')
+        console.log('stats', this.stats)
     },
 
     changeState: function (state) {
@@ -232,14 +257,21 @@ export default {
 
           <div class="row w-100">
             <div v-if="todayScores.show" class="scores-today pb-5 col-6">
-              <Scoreboard :scoreboard="todayScores.scores" :title="todayScores.title" />
+              <Scoreboard :scoreboard="todayScores.scores" :title="todayScores.title" :headers="todayScores.headers" />
             </div>
             <div v-if="lanScores.show" class="scores-lan pb-5 col-6">
-              <Scoreboard :scoreboard="lanScores.scores" :title="lanScores.title" />
+              <Scoreboard :scoreboard="lanScores.scores" :title="lanScores.title" :headers="lanScores.headers" />
             </div>
           </div>
+
+          <div class="row w-100">
+            <div v-if="totalScores.show" class="scores-total pb-5 col-12">
+              <Scoreboard :scoreboard="totalScores.scores" :title="totalScores.title" :headers="totalScores.headers" />
+            </div>
+          </div>
+
           <div v-if="activeScores.show" class="scores-active pb-5">
-            <Scoreboard :scoreboard="activeScores.scores" :title="activeScores.title" />
+            <Scoreboard :scoreboard="activeScores.scores" :title="activeScores.title" :headers="activeScores.headers" />
           </div>
           <!--
           <div class="scores-inactive pb-5">
@@ -258,26 +290,30 @@ export default {
 
 <style>
 @font-face {
-	font-family: 'Trebuchet';
-	src: url('fonts/trebuc.ttf');
+  font-family: 'Trebuchet';
+  src: url('fonts/trebuc.ttf');
 }
 
 .status { 
-	font-family: monospace;
-	float: left;
+  font-family: monospace;
+  float: left;
 }
 
 .table td, .table th {
-	font-size: 1.5rem;
-	padding: .25rem;
-	border-color: #ffffff17;
-	text-shadow: 0px 0px 1px rgb(255 255 255 / 50%);
-	/*font-family: 'Trebuchet';*/
-	background-color: rgb(0 0 0 / 0%);
+  font-size: 1.5rem;
+  padding: .25rem;
+  border-color: #ffffff17;
+  text-shadow: 0px 0px 1px rgb(255 255 255 / 50%);
+  /*font-family: 'Trebuchet';*/
+  background-color: rgb(0 0 0 / 0%);
+}
+
+.scores-today .table td, .scores-today .table th, .scores-lan .table td, .scores-lan .table th {
+  font-size: 1.25rem;
 }
 
 table th {
-	color: white;
+  color: white;
 }
 
 .table tr.neutral {
@@ -285,31 +321,32 @@ table th {
 }
 
 .table tr.UNASSIGNED {
-	background-color: rgb(220 220 220 / 0%);
-	color: gray;
+  background-color: rgb(220 220 220 / 0%);
+  color: gray;
 }
 
 .table tr.TERRORIST {
-	background-color: rgb(232 4 4 / 0%);
-	color: #ea403e;
+  background-color: rgb(232 4 4 / 0%);
+  color: #ea403e;
 }
 
 .table tr.CT {
-	background-color: rgb(38 135 255 / 0%);
-	color: #00abff;
+  background-color: rgb(38 135 255 / 0%);
+  color: #00abff;
 }
 
 .hidden {
-	display: none;
+  display: none;
 }
 
 .visible {
-	display: block;
+  display: block;
 }
 
 body {
-	background-color: #131313;
-	color: white;
+  background-color: #131313;
+  color: white;
+  min-height: 100%;
 }
 
 :root {
@@ -330,22 +367,22 @@ body {
 }
 
 video {
-	position: fixed;
-	top: 0;
-	left: 0;
-	width: 100%;
-	opacity: 50%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  opacity: 50%;
 }
 
 .volume {
-	display: inline-block;
-	z-index: 10000;
+  display: inline-block;
+  z-index: 10000;
   width: 200px;
-	float: right;
+  float: right;
 }
 
 .volume label {
-	float: right;
+  float: right;
 }
 
 .slider {

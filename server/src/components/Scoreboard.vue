@@ -1,5 +1,5 @@
 <script setup>
-defineProps([ 'scoreboard', 'title' ])
+defineProps([ 'scoreboard', 'title', 'headers' ])
 </script>
 
 <template>
@@ -7,13 +7,12 @@ defineProps([ 'scoreboard', 'title' ])
 	<table class="table table-fluid">
 		<thead>
 			<tr>
-				<th>Name</th>
-				<th>K/D</th>
-				<th>Knife K/D</th>
-				<th>TKs</th>
-				<th>Suicides</th>
-				<th>Øls</th>
-				<th>Maps</th>
+				<th>{{ headers[0] }}</th>
+				<th>{{ headers[1] }}</th>
+				<th>{{ headers[2] }}</th>
+				<th>{{ headers[3] }}</th>
+				<th>{{ headers[4] }}</th>
+				<th>{{ headers[5] }}</th>
 			</tr>
 		</thead>
 		<tbody>
