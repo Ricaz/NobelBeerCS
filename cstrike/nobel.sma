@@ -1854,10 +1854,9 @@ public cmd_nobel_start(id, level, cid)
     round_time = (get_cvar_float("mp_roundtime") * 60.0)
     log_amx("Read mp_roundtime value=%f", round_time)
 
-    shuffle_players()
     server_cmd("exec server.cfg")
     server_cmd("exec mr15.cfg")
-    
+
     new params[1]
     params[0] = 0
 
@@ -1877,7 +1876,7 @@ public cmd_nobel_serverstart(id, level, cid)
     SOUND = true
     PAUSE = true
     KNIFEPAUSE = true
-    FLASHPROTECTION = true
+    FLASHPROTECTION = false
     ANTIZOOMPISTOL = true
 
     round_start()
