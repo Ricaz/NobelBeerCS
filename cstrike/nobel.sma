@@ -1848,7 +1848,7 @@ public cmd_nobel_start(id, level, cid)
     new map_type_cfg[22]
     format(map_type_cfg, 22, "exec nobel_map_%s.cfg", map_type)
     log_amx("Executing: %s", map_type_cfg)
-    server_cmd("nobel_balance 30")
+    server_cmd("nobel_balance 5")
     server_cmd(map_type_cfg)
     server_exec();
     round_time = (get_cvar_float("mp_roundtime") * 60.0)
