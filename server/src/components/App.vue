@@ -122,6 +122,9 @@ export default {
         case "stats":
           this.updateStats(data.data)
           break
+        case "mapend":
+          this.playMedia('assets/media/default/wii/wiishop.mp3')
+          break
         case "state":
           this.changeState(data.data)
         case "unpause":
@@ -158,10 +161,11 @@ export default {
       if (!file)
         return
 
-      let soundTypes = [ 'wav', 'mp3' ]
-      let videoTypes = [ 'ogg', 'mp4', 'webm' ]
+      let soundTypes = [ 'wav', 'mp3', 'ogg' ]
+      let videoTypes = [ 'mp4', 'webm' ]
       let ext = file.split('.').pop()
 
+      console.log(`Playing sound "${file}"`)
       if (soundTypes.includes(ext))
         this.playSound(file)
       else if (videoTypes.includes(ext))
