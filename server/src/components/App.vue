@@ -165,7 +165,7 @@ export default {
       let videoTypes = [ 'mp4', 'webm' ]
       let ext = file.split('.').pop()
 
-      console.log(`Playing sound "${file}"`)
+      console.log(`Playing file "${file}"`)
       if (soundTypes.includes(ext))
         this.playSound(file)
       else if (videoTypes.includes(ext))
@@ -214,6 +214,9 @@ export default {
 
       // Pause all playing audio elements and remove them from array
       // Chrome will take care of garbage collection
+      this.audioElements.forEach((audio, i, arr) => {
+          audio.pause()
+      })
       this.audioElements.forEach((audio, i, arr) => {
         if (! audio.paused)
           audio.pause()
