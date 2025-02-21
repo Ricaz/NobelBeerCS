@@ -57,22 +57,21 @@ var server = http.createServer(options, (req, res) => {
 			fileStream = fs.createReadStream(filepath)
 			fileStream.on('error', (e) => log.http(`Error reading '${filepath}': ${e}`))
 			fileStream.on('data', (chunk) => res.write(chunk))
-			fileStream.on('close', (chunk) => res.end())
+			fileStream.on('close', () => res.end())
 			log.http(`Streamed '${req.url}' to ${req.connection.remoteAddress}.`)
-			return
 		}
 
-		fs.readFile(filepath, function(err, data) {
-			if (err) {
-				res.statusCode = 500
-				err += `\n${filepath}`
-				log.http(`Error serving '${req.url}: ${err}`)
-				res.end(`Hvem har hældt øl i serveren?!\n${err}`)
-			} else {
-				log.http(`Serving ${filepath}`)
-				res.end(data)
-			}
-		})
+		//fs.readFile(filepath, function(err, data) {
+		//	if (err) {
+		//		res.statusCode = 500
+		//		err += `\n${filepath}`
+		//		log.http(`Error serving '${req.url}: ${err}`)
+		//		res.end(`Hvem har hældt øl i serveren?!\n${err}`)
+		//	} else {
+		//		log.http(`Serving ${filepath}`)
+		//		res.end(data)
+		//	}
+		//})
 	})
 
 })
