@@ -1,7 +1,7 @@
 #!node
 
-const net = require('net')
-const readline = require('readline')
+import * as net from "node:net"
+import * as readline from "node:readline"
 
 var rl = readline.createInterface({
 	input: process.stdin,

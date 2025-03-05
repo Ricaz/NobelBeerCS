@@ -1,8 +1,9 @@
-const log  = require('./utility').log
-const fs   = require('fs')
-const path = require('path')
-const glob = require('glob')
-const EventEmitter = require('node:events')
+import * as path from 'node:path'
+import * as glob from 'glob'
+import * as url from 'node:url'
+import * as fs from 'node:fs'
+import { EventEmitter } from 'node:events'
+import * as log from './utility.mjs'
 
 class Player {
 	constructor(args) {
@@ -21,14 +22,14 @@ class Player {
 	}
 }
 
-class Tracker extends EventEmitter {
+export default class Tracker extends EventEmitter {
 	constructor(args) {
 		super()
 		this.startTime
 		this.endTime
 		this.running = false
 		this.board
-		this.historyDir = path.resolve(__dirname, '../../history')
+		this.historyDir = path.resolve(import.meta.dirname, '../../history')
 
 		// Set state 'ended' if less than 30 hours since last game
 		if (Date.now() - this.getLatestGameDate() < (3600*30*1000))
@@ -545,5 +546,3 @@ class Scoreboard {
 		})
 	}
 }
-
-module.exports = Tracker
