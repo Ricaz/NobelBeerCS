@@ -86,7 +86,7 @@ export default {
  
   methods: {
     connectWebSocket: function() {
-      const socket = new WebSocket(import.meta.env.VITE_WEBSOCKET_URI, 'beercs')
+      const socket = new WebSocket(`wss://${location.host}/`)
 
       socket.addEventListener('open', (event) => {
         console.log('WebSocket connected!', event)
@@ -248,7 +248,7 @@ export default {
 </script>
 
 <template>
-  <div class="container-fluid">
+  <div class="container-fluid" data-bs-theme="dark">
     <div class="row">
       <div class="col-12 pt-4">
         <div class="container-fluid">

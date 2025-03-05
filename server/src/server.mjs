@@ -2,43 +2,33 @@
 'use strict'
 
 // Load config from .env
-require('dotenv').config()
+import 'dotenv/config'
 
 // Load system/npm modules
-const net  = require('net')
-const WSs  = require('websocket').server
-const exec = require('child_process').exec
-const fs   = require('fs')
-const path = require('path')
+import * as net from 'node:net'
+import * as path from 'node:path'
+import * as fs from 'node:fs'
+import WebSocket, { WebSocketServer } from 'ws'
 
 // Load custom modules
-const http         = require('./lib/http-server')
-const log          = require('./lib/utility').log
-const scoretracker = require('./lib/scoretracker')
+import webserver from './lib/http-server.mjs'
+import * as log from './lib/utility.mjs'
+import scoretracker from './lib/scoretracker.mjs'
 
-// Global vars
-var clientsWs  = []
-var clientsTcp = []
-var readyTcp   = false
-var readyWs    = false
-var connID     = 0
 var settings   = {
 	theme: 'default'
 }
 
 const mediaPath = 'dist/assets/media/'
-var themes		= loadThemes()
+const themes		= loadThemes()
 
+console.log(`Mode: ${process.env.MODE}`)
+
+// Initialize tracker and events
 var tracker = new scoretracker()
-tracker.on('state', (state) => {
-	clientsWs.forEach((client) => { client.send(JSON.stringify({ cmd: 'state', data: state })) })
-})
-tracker.on('stats', (stats) => {
-	clientsWs.forEach((client) => { client.send(JSON.stringify({ cmd: 'stats', data: stats })) })
-})
-tracker.on('game-ended', () => {
-	clientsWs.forEach((client) => { client.send(JSON.stringify({ cmd: 'game-ended' })) })
-})
+tracker.on('state', (state) => { broadcast({ cmd: 'state', data: state }) })
+tracker.on('stats', (stats) => { broadcast({ cmd: 'stats', data: stats }) })
+tracker.on('game-ended', () => { broadcast({ cmd: 'game-ended' }) })
 
 // Create TCP socket server and set up event handling on it
 var tcp = net.createServer((sock) => {
@@ -57,7 +47,7 @@ var tcp = net.createServer((sock) => {
 			let stats = tracker.getStatsInterval(...message.args)
 			console.log('getfullstats: ', stats)
 			if (stats)
-				clientsWs.forEach((client) => { client.send(JSON.stringify(stats)) })
+				broadcast(stats)
 		}
 
 		if (message.cmd == 'getstats') {
@@ -79,7 +69,7 @@ var tcp = net.createServer((sock) => {
 		tracker.handleEvent(message)
 		if (tracker.running || true) {
 			var fullState = { cmd: 'scoreboard', args: [ tracker.getScoreboard() ] }
-			clientsWs.forEach((client) => { client.send(JSON.stringify(fullState)) })
+			broadcast(fullState)
 
 			// Handle media
 			if (message.cmd === 'theme' && themes.includes(message.args[0])) {
@@ -91,8 +81,7 @@ var tcp = net.createServer((sock) => {
 				message.media = getMedia(message.cmd)
 			}
 
-			// Forward to WS clients
-			clientsWs.forEach((client) => { client.send(JSON.stringify(message)) })
+			broadcast(message)
 		}
 	})
 
@@ -100,35 +89,41 @@ var tcp = net.createServer((sock) => {
 		log.tcp(err)
 	})
 
-	clientsTcp.push(sock)
 	sock.pipe(sock)
 })
 
 tcp.listen(process.env.PORT_TCP, () => {
-	readyTcp = true
 	log.tcp('Socket listening on ' + process.env.PORT_TCP)
 })
 
-http.listen(process.env.PORT_HTTP, (err) => {
+webserver.listen(process.env.PORT_HTTP, (err) => {
 	if (err)
 		return log.tcp('http.listen() error: ' + err)
 
 	log.http('Server listening on ' + process.env.PORT_HTTP)
 })
 
-var ws = new WSs({
-	httpServer: http,
-	autoAcceptConnections: false
+const ws = new WebSocketServer({
+  server: webserver,
+  clientTracking: true
 })
 
-ws.on('request', (req) => {
-	let connection = req.accept('beercs', req.origin)
+ws.on('listening', () => {
+  log.ws(`Socket listening on ${process.env.PORT_HTTP}`)
 })
 
-ws.on('connect', (conn) => {
-	conn.id = connID++
-	clientsWs[conn.id] = conn
-	log.ws(`[${conn.id}] Connected from ${conn.socket.remoteAddress}.`)
+ws.on('upgrade', (req, sock, head) => {
+  log.ws(`Upgrade event: `, { req, sock, head })
+})
+
+ws.on('connection', (conn, req) => {
+  conn.on('error', console.error)
+
+  let clientAddress = req.socket.remoteAddress.split(':').at(-1)
+  if (req.headers['x-forwarded-for'])
+    clientAddress = req.headers['x-forwarded-for'].split(',')[0].trim();
+    
+	log.ws(`Connection from ${clientAddress}.`)
 
 	log.ws('Sending full state.')
 	var fullState = { cmd: 'scoreboard', args: [ tracker.getScoreboard() ] }
@@ -151,11 +146,11 @@ ws.on('connect', (conn) => {
 	conn.send(JSON.stringify({ cmd: 'filelist', data: getMediaList() }))
 
 	conn.on('message', (data) => {
-		log.ws(`[${conn.id}]: ${data}`)
+		log.ws(`[${clientAddress}]: ${data}`)
 	})
 
 	conn.on('close', (reason, description) => {
-		log.ws(`[${conn.id}] Disconnected.`)
+		log.ws(`[${clientAddress}] Disconnected.`)
 	})
 })
 
@@ -167,7 +162,7 @@ function getAllFiles(dirPath, arrayOfFiles) {
 		if (fs.statSync(dirPath + "/" + file).isDirectory())
 			arrayOfFiles = getAllFiles(dirPath + "/" + file, arrayOfFiles)
 		else
-			arrayOfFiles.push(path.join(__dirname, dirPath, "/", file))
+			arrayOfFiles.push(path.join(path.resolve(), dirPath, "/", file))
 	})
 
 	return arrayOfFiles
@@ -218,9 +213,9 @@ function loadThemes() {
 	return themes
 }
 
-// Helper functions
-function rng(min, max) {
-	min = Math.floor(min)
-	max = Math.floor(max) + 1
-	return Math.floor(Math.random() * (max - min) + min)
+function broadcast(data) {
+  ws.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN)
+      client.send(JSON.stringify(data))
+  })
 }
