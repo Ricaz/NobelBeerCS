@@ -29,7 +29,7 @@ export default class Tracker extends EventEmitter {
 		this.endTime
 		this.running = false
 		this.board
-		this.historyDir = path.resolve(import.meta.dirname, '../../history')
+		this.historyDir = path.resolve('history')
 
 		// Set state 'ended' if less than 30 hours since last game
 		if (Date.now() - this.getLatestGameDate() < (3600*30*1000))
