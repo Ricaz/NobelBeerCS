@@ -104,25 +104,25 @@ webserver.listen(process.env.PORT_HTTP, (err) => {
 })
 
 const ws = new WebSocketServer({
-  server: webserver,
-  clientTracking: true
+	server: webserver,
+	clientTracking: true
 })
 
 ws.on('listening', () => {
-  log.ws(`Socket listening on ${process.env.PORT_HTTP}`)
+	log.ws(`Socket listening on ${process.env.PORT_HTTP}`)
 })
 
 ws.on('upgrade', (req, sock, head) => {
-  log.ws(`Upgrade event: `, { req, sock, head })
+	log.ws(`Upgrade event: `, { req, sock, head })
 })
 
 ws.on('connection', (conn, req) => {
-  conn.on('error', console.error)
+	conn.on('error', console.error)
 
-  let clientAddress = req.socket.remoteAddress.split(':').at(-1)
-  if (req.headers['x-forwarded-for'])
-    clientAddress = req.headers['x-forwarded-for'].split(',')[0].trim();
-    
+	let clientAddress = req.socket.remoteAddress.split(':').at(-1)
+	if (req.headers['x-forwarded-for'])
+		clientAddress = req.headers['x-forwarded-for'].split(',')[0].trim();
+
 	log.ws(`Connection from ${clientAddress}.`)
 
 	log.ws('Sending full state.')
@@ -140,7 +140,7 @@ ws.on('connection', (conn, req) => {
 		conn.send(JSON.stringify({ cmd: 'stats', data: tracker.generateIdleStats() }))
 	} else if (tracker.state === 'live') {
 		conn.send(JSON.stringify({ cmd: 'state', data: 'live' }))
-  }
+	}
 
 	// Send list of files
 	conn.send(JSON.stringify({ cmd: 'filelist', data: getMediaList() }))
@@ -214,8 +214,8 @@ function loadThemes() {
 }
 
 function broadcast(data) {
-  ws.clients.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN)
-      client.send(JSON.stringify(data))
-  })
+	ws.clients.forEach((client) => {
+	if (client.readyState === WebSocket.OPEN)
+		client.send(JSON.stringify(data))
+	})
 }
