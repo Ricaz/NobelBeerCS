@@ -86,15 +86,15 @@ export default {
  
   methods: {
     connectWebSocket: function() {
-      const socket = new WebSocket(`wss://${location.host}/`)
+      const socket = new WebSocket(import.meta.env.VITE_WEBSOCKET_URI)
 
       socket.addEventListener('open', (event) => {
-        console.log('WebSocket connected!', event)
+        console.log('WebSocket connected!')
         this.status = 'connected'
       })
 
       socket.addEventListener('close', (event) => {
-        console.log('WebSocket disconnected!', event)
+        console.log('WebSocket disconnected!')
         this.status = 'disconnected'
         setTimeout(() => { this.connectWebSocket() }, 2000)
       })
