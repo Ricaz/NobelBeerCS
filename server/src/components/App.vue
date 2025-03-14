@@ -10,6 +10,7 @@ export default {
       volume: 30,
       scores: [],
       audioElements: [],
+      cooldowns: [],
       loadedFiles: 0,
       defaultHeaders: [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Maps/rounds" ]
     }
@@ -17,18 +18,15 @@ export default {
 
   computed: {
     showStats() {
-      if (this.state == 'idle' || this.state == 'ended')
-        return true
-      else
-        return false
+      return this.state === 'idle' || this.state === 'ended';
     },
     activeScores() {
       let board = {}
       board.headers = [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Rounds" ]
-      board.scores = this.scores.filter(player => player.active == true)
+      board.scores = this.scores.filter(player => player.active === true)
       board.title = "Scoreboard"
       board.show = true
-      board.show = this.state == 'live' || this.state == 'ended' ? true : false
+      board.show = this.state === 'live' || this.state === 'ended'
       if (! board.scores.length)
         board.show = false
       return board
@@ -36,7 +34,7 @@ export default {
     inactiveScores() {
       let board = {}
       board.headers = [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Rounds" ]
-      board.scores = this.scores.filter(player => player.active == false)
+      board.scores = this.scores.filter(player => player.active === false)
       board.title = "Inactive/offline"
       board.show = true
       return board
@@ -47,7 +45,7 @@ export default {
       board.scores = this.stats.full ?? []
       board.scores.forEach((p) => { p.team = 'neutral' })
       board.title = "No LAN active. All stats:"
-      board.show = this.state == 'idle' ? true : false
+      board.show = this.state === 'idle'
       if (! board.scores.length)
         board.show = false
       return board
@@ -58,9 +56,8 @@ export default {
       board.scores = this.stats.today ?? []
       board.scores.forEach((p) => { p.team = 'neutral' })
       board.title = "Stats for today"
-      board.show = this.state == 'ended' ? true : false
+      board.show = this.state === 'ended'
       if (! board.scores.length)
-        board.show = false
       return board
     },
     lanScores() {
@@ -69,7 +66,7 @@ export default {
       board.scores = this.stats.lan ?? []
       board.scores.forEach((p) => { p.team = 'neutral' })
       board.title = "Stats for this LAN"
-      board.show = this.state == 'ended' ? true : false
+      board.show = this.state === 'ended'
       if (! board.scores.length)
         board.show = false
       return board
@@ -83,7 +80,7 @@ export default {
   created() {
     this.audioElements.forEach((audio) => { audio.volume = this.volume / 100 })
   },
- 
+
   methods: {
     connectWebSocket: function() {
       const socket = new WebSocket(import.meta.env.VITE_WEBSOCKET_URI)
@@ -109,8 +106,20 @@ export default {
 
     handleMessage: function (msg) {
       let data = JSON.parse(msg.data)
-      if (process.env.NODE_ENV == 'development')
-        console.log('Recieved socket data: ', data)
+      if (process.env.NODE_ENV === 'development')
+        console.log('Received socket data: ', data)
+
+      // Handle cooldowns
+      if (this.cooldowns.includes(data.cmd))
+        return
+
+      let cooldownList = ['suicide', 'tk', 'grenade']
+      if (cooldownList.includes(data.cmd)) {
+        this.cooldowns.push(data.cmd)
+        setTimeout(() => {
+          this.cooldowns = this.cooldowns.filter(value => value !== data.cmd)
+        }, 1000)
+      }
 
       switch (data.cmd) {
         case "scoreboard":
@@ -138,7 +147,7 @@ export default {
     },
 
     updateStats: function (data) {
-      this.stats = data 
+      this.stats = data
       if (this.stats.lan)
         this.stats.lan = this.stats.lan.sort((a, b) => { return b.sips - a.sips })
       if (this.stats.today)
@@ -146,14 +155,14 @@ export default {
       if (this.stats.full)
         this.stats.full = this.stats.full.sort((a, b) => { return b.sips - a.sips })
 
-      if (process.env.NODE_ENV == 'development')
+      if (process.env.NODE_ENV === 'development')
         console.log('stats', this.stats)
     },
 
     changeState: function (state) {
       this.state = state
-      if (this.state == 'ended') {
-         
+      if (this.state === 'ended') {
+
       }
     },
 
@@ -176,9 +185,9 @@ export default {
 
     playSound: function (path) {
       if (!path)
-        return  
+        return
 
-      var audio = new Audio(path)
+      let audio = new Audio(path)
       audio.load()
       audio.addEventListener('canplay', e => {
         audio.volume = this.volume / 100
@@ -235,7 +244,6 @@ export default {
       let audio = new Audio()
       audio.addEventListener('canplaythrough', function() {
         loadedFiles++
-
       }, false)
       audio.src = url
     },
@@ -310,7 +318,7 @@ export default {
   font-size: 1.5rem;
   padding: .25rem;
   border-color: #ffffff17;
-  text-shadow: 0px 0px 1px rgb(255 255 255 / 50%);
+  text-shadow: 0 0 1px rgb(255 255 255 / 50%);
   /*font-family: 'Trebuchet';*/
   background-color: rgb(0 0 0 / 0%);
 }
@@ -393,7 +401,7 @@ video {
 }
 
 .slider {
-  -webkit-appearance: none;
+  appearance: none;
   width: 100%;
   height: 10px;
   border-radius: 5px;
@@ -419,6 +427,7 @@ video {
 }
 
 .slider::-moz-range-thumb {
+  -webkit-appearance: none;
   width: 25px;
   height: 25px;
   border-radius: 50%;
