@@ -9,9 +9,18 @@ var rl = readline.createInterface({
 	terminal: true
 })
 
-rl.on('line', (cmd) => {
-	var cmds = cmd.split(' ')
-	var encoded = encode(cmds[0], cmds[1], cmds[2])
+rl.on('line', (input) => {
+	var input = input.split(' ')
+	let cmd = input[0]
+
+	if (cmd === 'tk') {
+		input[1] = 'STEAM_0:0:32762533'
+		input[2] = 'STEAM_0:1:11611559'
+	} else if (cmd === 'suicide') {
+		input[1] = 'STEAM_0:0:32762533'
+	}
+
+	var encoded = encode(input[0], input[1], input[2])
 	console.log('sending:', encoded)
 	client.write(JSON.stringify(encoded))
 	rl.prompt()
