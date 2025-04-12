@@ -22,7 +22,8 @@ var settings   = {
 const mediaPath = 'dist/assets/media/'
 const themes		= loadThemes()
 
-console.log(`Mode: ${process.env.MODE}`)
+console.log(`MODE: ${process.env.MODE}`)
+console.log(`NODE_ENV: ${process.env.NODE_ENV}`)
 
 // Initialize tracker and events
 var tracker = new scoretracker()

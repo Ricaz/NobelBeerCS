@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import vueDevTools from 'vite-plugin-vue-devtools'
 
 export default defineConfig(({ mode }) => {
   process.env = {...process.env, ...loadEnv(mode, process.cwd())};
@@ -11,7 +12,7 @@ export default defineConfig(({ mode }) => {
         outDir: process.env.VITE_BUILD_DIR,
         copyPublicDir: true
       },
-      plugins: [ vue() ],
+      plugins: [ vue(), vueDevTools() ],
     }
   } else {
     return {

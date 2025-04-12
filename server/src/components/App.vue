@@ -6,20 +6,17 @@ export default {
       state: 'idle',
       status: "not connected",
       theme: "default",
-      wslog: [],
       volume: 30,
       scores: [],
       audioElements: [],
       cooldowns: [],
       loadedFiles: 0,
+      overlay: { 'event': 'abc', show: false},
       defaultHeaders: [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Maps/rounds" ]
     }
   },
 
   computed: {
-    showStats() {
-      return this.state === 'idle' || this.state === 'ended';
-    },
     activeScores() {
       let board = {}
       board.headers = [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Rounds" ]
@@ -136,14 +133,29 @@ export default {
           break
         case "state":
           this.changeState(data.data)
+          break
+        case "tk":
+        case "suicide":
+        case "bombexploded":
+          this.showOverlay(data.cmd, data.args)
+          break
         case "unpause":
         case "newround":
         case "round":
           this.stopSound()
+          this.overlay.show = false
           break
       }
 
       this.playMedia(data.media)
+    },
+
+    showOverlay: function(cmd, args) {
+      console.log('cmd', cmd)
+      console.log('args', args)
+      this.overlay.cmd = cmd
+      this.overlay.args = args
+      this.overlay.show = true
     },
 
     updateStats: function (data) {
@@ -178,7 +190,7 @@ export default {
       if (soundTypes.includes(ext))
         this.playSound(file)
       else if (videoTypes.includes(ext))
-        this.playVideo(file)
+        this.$refs.overlay.playVideo(file)
       else
         console.log(`Could not determine if "${ext}" is sound or video.`)
     },
@@ -195,31 +207,9 @@ export default {
       })
       this.audioElements.push(audio)
     },
-    playVideo: function (path) {
-      // Attempt at streaming
-      //this.$refs.video.load()
-      //fetch(path)
-      //  .then(response => response.blob())
-      //  .then(blob => {
-      //    this.$refs.video.srcObject = blob
-      //    return this.$refs.video.play()
-      //  })
-      //  .then(_ => {
-      //    console.log('Playing video, beep boop')
-      //  })
-      //  .catch(e => {
-      //    console.log(`Playing video failed? ${e}`)
-      //  })
-
-      this.$refs.video.classList.remove('hidden')
-      this.$refs.video.src = path
-      this.$refs.video.play()
-    },
 
     stopSound: function () {
-      this.$refs.video.src = ''
-      this.$refs.video.load()
-      this.$refs.video.classList.add('hidden')
+      this.$refs.overlay.stopVideo()
 
       // Pause all playing audio elements and remove them from array
       // Chrome will take care of garbage collection
@@ -295,12 +285,11 @@ export default {
           -->
 
           <audio ref="audio" id="audio">Audio not available</audio>
-          <video ref="video" class="hidden" id="video">Video not available</video>
         </div>
-        
       </div>
     </div>
   </div>
+  <Overlay ref="overlay" :overlay="overlay" />
 </template>
 
 <style>
@@ -379,14 +368,6 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
-}
-
-video {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  opacity: 50%;
 }
 
 .volume {
