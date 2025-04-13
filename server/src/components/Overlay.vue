@@ -15,14 +15,17 @@ const stopVideo = function() {
   console.log(`Stopped video.`)
 }
 
-defineExpose({ playVideo, stopVideo })
+const setVolume = function(volume) {
+  this.$refs.video.volume = volume
+}
+
+defineExpose({ playVideo, stopVideo, setVolume })
 
 </script>
 
 <template>
 <div class="container-fluid overlay" v-show="overlay.show">
   <div class="overlay-body">
-    <h2>TEST</h2>
     <video ref="video" class="hidden" id="video">Video not available</video>
   </div>
 </div>
@@ -30,12 +33,11 @@ defineExpose({ playVideo, stopVideo })
 
 <style scoped>
 .overlay {
-  position: fixed;
-  top: 10%;
-  background-color: yellow;
+  position: absolute;
+  top: 0;
   color: black;
   width: 100%;
-  height: 100%;
+  height: 90%;
   z-index: 9999;
 }
 
