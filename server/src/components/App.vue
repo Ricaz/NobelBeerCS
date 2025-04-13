@@ -224,7 +224,7 @@ export default {
     },
 
     volumeChange: function () {
-      this.$refs.video.volume = this.volume / 100
+      this.$refs.overlay.setVolume(this.volume / 100)
       this.audioElements.forEach((audio, i, arr) => {
         audio.volume = this.volume / 100
       })
@@ -255,9 +255,8 @@ export default {
             State: <pre class="d-inline">{{ state }}</pre>
           </div>
           <div class="volume">
-            <input class="slider" type="range" name="volume" ref="volume" step="5" id="volume" min="0" max="100" v-model="volume" v-on:change="volumeChange" />
+            <input class="slider" type="range" name="volume" ref="volume" step="1" id="volume" min="0" max="100" v-model="volume" v-on:change="volumeChange" />
             <label for="volume">Volume</label>
-
           </div>
 
           <div class="row w-100">
@@ -374,7 +373,8 @@ body {
   display: inline-block;
   z-index: 10000;
   width: 200px;
-  float: right;
+  position: fixed;
+  right: 20pt;
 }
 
 .volume label {
