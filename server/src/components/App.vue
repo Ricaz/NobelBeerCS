@@ -153,8 +153,22 @@ export default {
     showOverlay: function(cmd, args) {
       console.log('cmd', cmd)
       console.log('args', args)
-      this.overlay.cmd = cmd
-      this.overlay.args = args
+
+      // Generate text to display on overlay
+      if (cmd === 'tk') {
+        console.log(this.totalScores.scores)
+        const killer = this.totalScores.scores.find((p) => p.id == args[0]).name    
+        const victim = this.totalScores.scores.find((p) => p.id == args[1]).name    
+        this.overlay.text = `${killer}\nteamkilled\n${victim}`
+      } else if (cmd === 'suicide') {
+        const victim = this.totalScores.scores.find((p) => p.id == args[0]).name    
+        this.overlay.text = `${victim} committed suicide!` 
+      } else if (cmd === 'bombexploded') {
+        this.overlay.text = 'Allahu Akbar!'
+      } else {
+        this.overlay.text = ''
+      }
+
       this.overlay.show = true
     },
 
