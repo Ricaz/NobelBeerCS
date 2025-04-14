@@ -26,12 +26,23 @@ defineExpose({ playVideo, stopVideo, setVolume })
 <template>
 <div class="container-fluid overlay" v-show="overlay.show">
   <div class="overlay-body">
+    <span class="overlay-text">{{ overlay.text }}</span>
     <video ref="video" class="hidden" id="video">Video not available</video>
   </div>
 </div>
 </template>
 
 <style scoped>
+.overlay-text {
+  position: fixed;
+  white-space: pre;
+  color: white;
+  width: 100%;
+  top: 10%;
+  text-align: center;
+  font-size: 60pt;
+  text-shadow: 3px -1px 7px rgba(0,0,0,0.5);
+}
 .overlay {
   position: absolute;
   top: 0;
