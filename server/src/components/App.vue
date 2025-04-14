@@ -156,11 +156,12 @@ export default {
 
       // Generate text to display on overlay
       if (cmd === 'tk') {
-        const killer = this.activeScores.scores.find((p) => p.id == args[0]).name    
-        const victim = this.activeScores.scores.find((p) => p.id == args[1]).name    
+        console.log(this.totalScores.scores)
+        const killer = this.totalScores.scores.find((p) => p.id == args[0]).name    
+        const victim = this.totalScores.scores.find((p) => p.id == args[1]).name    
         this.overlay.text = `${killer}\nteamkilled\n${victim}`
       } else if (cmd === 'suicide') {
-        const victim = this.activeScores.scores.find((p) => p.id == args[0]).name    
+        const victim = this.totalScores.scores.find((p) => p.id == args[0]).name    
         this.overlay.text = `${victim} committed suicide!` 
       } else if (cmd === 'bombexploded') {
         this.overlay.text = 'Allahu Akbar!'
