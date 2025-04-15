@@ -110,7 +110,7 @@ export default {
       if (this.cooldowns.includes(data.cmd))
         return
 
-      let cooldownList = ['suicide', 'tk', 'grenade']
+      let cooldownList = ['suicide', 'mikkitk', 'tk', 'grenade']
       if (cooldownList.includes(data.cmd)) {
         this.cooldowns.push(data.cmd)
         setTimeout(() => {
@@ -135,6 +135,7 @@ export default {
           this.changeState(data.data)
           break
         case "tk":
+        case "mikkitk":
         case "suicide":
         case "bombexploded":
           this.showOverlay(data.cmd, data.args)
@@ -152,7 +153,7 @@ export default {
 
     showOverlay: function(cmd, args) {
       // Generate text to display on overlay
-      if (cmd === 'tk') {
+      if (cmd === 'tk' || cmd == 'mikkitk') {
         const killer = this.scores.find((p) => p.id == args[0]).name    
         const victim = this.scores.find((p) => p.id == args[1]).name    
         this.overlay.text = `${killer}\nteamkilled\n${victim}`
