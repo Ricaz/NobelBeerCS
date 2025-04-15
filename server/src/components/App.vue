@@ -161,6 +161,10 @@ export default {
         this.overlay.text = `${victim} committed suicide!` 
       } else if (cmd === 'bombexploded') {
         this.overlay.text = 'Allahu Akbar!'
+      } else if (cmd === 'knife') {
+        const killer = this.scores.find((p) => p.id == args[0]).name    
+        const victim = this.scores.find((p) => p.id == args[1]).name    
+        this.overlay.text = `${victim}\nwas knifed by\n${killer}`
       } else {
         this.overlay.text = ''
       }
@@ -333,17 +337,17 @@ table th {
   color: white;
 }
 
-.table tr.UNASSIGNED {
+.table tr.UNASSIGNED td {
   background-color: rgb(220 220 220 / 0%);
   color: gray;
 }
 
-.table tr.TERRORIST {
+.table tr.TERRORIST td {
   background-color: rgb(232 4 4 / 0%);
   color: #ea403e;
 }
 
-.table tr.CT {
+.table tr.CT td {
   background-color: rgb(38 135 255 / 0%);
   color: #00abff;
 }
