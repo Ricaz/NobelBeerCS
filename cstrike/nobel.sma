@@ -823,6 +823,9 @@ public hook_death()
     }
     else if (team_kill)
     {
+        new steamid[64]
+        get_user_authid(killer, steamid, charsmax(steamid))
+
         if (BONG) {
             send_event("bong", killersteamid, victimsteamid)
             client_print(0, print_chat, "%s? drikdrikdrikdrikdrikdrikdrikdrik", killername)
