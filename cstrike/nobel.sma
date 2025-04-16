@@ -829,7 +829,7 @@ public hook_death()
         if (BONG) {
             send_event("bong", killersteamid, victimsteamid)
             client_print(0, print_chat, "%s? drikdrikdrikdrikdrikdrikdrikdrik", killername)
-        } else if (equali(steamid, "STEAM_0:1:13218758")) {
+        } else if (equali(steamid, "STEAM_0:1:13218758") || equali(steamid, "STEAM_0:1:156056572") || equali(steamid, "STEAM_0:0:161232090")) {
             send_event("mikkitk", killersteamid, victimsteamid)
             client_print(0, print_chat, "Business as usual")
         } else {
