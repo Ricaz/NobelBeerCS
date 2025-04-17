@@ -831,7 +831,7 @@ public hook_death()
         new steamid[64]
         get_user_authid(killer, steamid, charsmax(steamid))
 
-        tk_cooldown = true
+        log_amx("tk_cooldown = true%s", tk_cooldown)
         set_task(0.1, "remove_cooldown", 11699, "", 0, "a", 0)
 
         if (BONG) {
@@ -847,6 +847,7 @@ public hook_death()
 
         if (tk_cooldown != true) {
             pause_or_freeze_player(killer)
+            tk_cooldown = true
         }
     }
     else if (KNIFE && !knifed && !grenade)
