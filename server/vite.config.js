@@ -9,6 +9,8 @@ export default defineConfig(({ mode }) => {
     return {
       build: {
         emptyOutDir: true,
+        terserOptions: { compress: false, mangle: false },
+        minify: false,
         outDir: process.env.VITE_BUILD_DIR,
         copyPublicDir: true
       },
