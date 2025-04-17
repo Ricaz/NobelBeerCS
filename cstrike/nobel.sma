@@ -83,7 +83,6 @@ new Float:flash_protection_time = 8.0
 new Float:map_pause_time = 300.0
 new vault
 new balance_socket
-new bool:tk_cooldown = false
 
 public plugin_init()
 {
@@ -203,10 +202,6 @@ public plugin_init()
         log_amx("Starting timer for notifying pause end")
         set_task(map_pause_time, "mapend_pause_end", 4132, "", 0, "a", 1)
     }
-}
-
-public remove_cooldown() {
-    tk_cooldown = false
 }
 
 public plugin_end() {
@@ -831,9 +826,6 @@ public hook_death()
         new steamid[64]
         get_user_authid(killer, steamid, charsmax(steamid))
 
-        tk_cooldown = true
-        set_task(0.1, "remove_cooldown", 11699, "", 0, "a", 0)
-
         if (BONG) {
             send_event("bong", killersteamid, victimsteamid)
             client_print(0, print_chat, "%s? drikdrikdrikdrikdrikdrikdrikdrik", killername)
@@ -844,10 +836,7 @@ public hook_death()
             send_event("tk", killersteamid, victimsteamid)
             client_print(0, print_chat, "Kan du bunde, %s?", killername)
         }
-
-        if (tk_cooldown != true) {
-            pause_or_freeze_player(killer)
-        }
+        pause_or_freeze_player(killer)
     }
     else if (KNIFE && !knifed && !grenade)
     {
