@@ -359,7 +359,7 @@ export default class Tracker extends EventEmitter {
 		else if (cmd.match(/knife$/))
 			this.board.handleKnife(args[0], args[1])
 
-		else if (cmd == 'tk')
+		else if (cmd == 'tk' || cmd == 'mikkitk')
 			this.board.handleTeamkill(args[0], args[1])
 
 		else if (cmd == 'suicide')
