@@ -275,8 +275,7 @@ export default class Tracker extends EventEmitter {
 		var files = glob.sync(path)
 
 		if (files.length > 0) {
-			const newestFile = files.map(name => ({name, ctime: fs.statSync(name).ctime}))
-				.sort((a, b) => b.ctime - a.ctime)[0].name
+			const newestFile = files.sort()[0]
 			var loaded
 			try {
 				loaded = JSON.parse(fs.readFileSync(newestFile, { encoding: 'utf8' }))
