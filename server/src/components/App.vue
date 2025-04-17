@@ -55,6 +55,7 @@ export default {
       board.title = "Stats for today"
       board.show = this.state === 'ended'
       if (! board.scores.length)
+        board.show = false
       return board
     },
     lanScores() {
