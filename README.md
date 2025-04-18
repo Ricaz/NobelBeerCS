@@ -22,6 +22,7 @@ General rules:
 * When you get a kill, start drinking immediately
 * You must always drink with your keyboard hand
 * When you get knifed, stand on your chair and say "I was knifed by NAME" (probably Emil)
+* **RIGTIGE NAVNE**: Your in-game name *must end* with your real name (for skål purposes)
 
 Drinking rules:
 * There are 20 sips in a 33cl beer
