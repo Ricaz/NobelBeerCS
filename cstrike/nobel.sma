@@ -880,6 +880,9 @@ public hook_death()
         } else if (equali(steamid, "STEAM_0:1:11318024")) {
             client_print(0, print_chat, "BOOOB HAN KNEPPER")
             send_event("bobknife", killersteamid, victimsteamid)
+        } else if (equali(steamid, "STEAM_0:0:46546093")) {
+            client_print(0, print_chat, "Here's Johnny!")
+            send_event("aminknife", killersteamid, victimsteamid)
         } else if (equali(steamid, "STEAM_0:0:29158958")) {
             client_print(0, print_chat, "Bernth tried to knife you. KILL HIM")
             send_event("bernthknife", killersteamid, victimsteamid)
