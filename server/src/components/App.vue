@@ -154,7 +154,7 @@ export default {
 
     showOverlay: function(cmd, args) {
       // Generate text to display on overlay
-      if (cmd === 'tk' || cmd == 'mikkitk') {
+      if (cmd === "tk" || cmd === "mikkitk") {
         const killer = this.scores.find((p) => p.id == args[0]).name    
         const victim = this.scores.find((p) => p.id == args[1]).name    
         this.overlay.text = `${killer}\nteamkilled\n${victim}`

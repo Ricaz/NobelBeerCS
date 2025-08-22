@@ -83,6 +83,8 @@ new Float:flash_protection_time = 8.0
 new Float:map_pause_time = 300.0
 new vault
 new balance_socket
+new Float:tk_counter[33]
+new Float:tk_victim_counter[33]
 
 public plugin_init()
 {
