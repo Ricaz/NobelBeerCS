@@ -45,7 +45,7 @@ var tcp = net.createServer((sock) => {
 
 		if (message.cmd == 'getfullstats') {
 			console.log(`opts: ${message.args}`)
-			let stats = tracker.getStatsInterval(...message.args)
+			let stats = tracker.getStatsInterval()
 			console.log('getfullstats: ', stats)
 			if (stats)
 				broadcast(stats)
