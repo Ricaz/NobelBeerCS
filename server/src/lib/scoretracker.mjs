@@ -162,7 +162,6 @@ export default class Tracker extends EventEmitter {
 	// Loads the latest `numGames` scoreboards and adds them together.
 	// Also calculates K/D for each player.
 	getStats(numGames = 0, sortBy = 'sips') {
-		log.score(`called tracker.getStats(${numGames}, ${sortBy})`)
 		const files = glob.sync(`${this.historyDir}/*.json`)
 		let loadedFiles = []
 
@@ -176,6 +175,7 @@ export default class Tracker extends EventEmitter {
 		while (loadedFiles.length < numGames) {
 			let game
 			let file = gameFiles.pop()
+			console.log(file)
 
 			// Skip loading files if invalid JSON or less than 7 players
 			try {
@@ -186,7 +186,7 @@ export default class Tracker extends EventEmitter {
 				continue
 			}
 
-			if (game.scores.length <= 6) {
+			if (game.scores.length <= 1) {
 				numGames--
 				continue
 			}
@@ -194,7 +194,7 @@ export default class Tracker extends EventEmitter {
 			loadedFiles.push(game)
 		}
 
-		log.score(`Loading ${loadedFiles.length} files`)
+		log.score(`getStats() loading ${loadedFiles.length} files`)
 
 		// Loop over each loaded game, calculate K/D for each player,
 		// ignoring players with 0/0 stats. Should produce the same
@@ -365,7 +365,7 @@ export default class Tracker extends EventEmitter {
 			this.endTime = Date.now()
 
 			// Write final scoreboard
-			const filename = `${this.historyDir}/${this.startTime}.json`
+			let filename = `${this.historyDir}/${this.startTime}.json`
 
 			fs.writeFile(filename, JSON.stringify(this.getScoreboard()), { flag: 'w' }, (err) => {
 				if (err)
@@ -383,8 +383,8 @@ export default class Tracker extends EventEmitter {
 		// Write scoreboard to tmp file (to resume state if started during round)
 		// TODO: For some reason, file is sometimes written twice and I have no idea why..
 		if (this.running) {
-			const filename = `${this.historyDir}/${this.startTime}.json`
-			fs.writeFile(filename, JSON.stringify(this.getScoreboard()), { flag: 'w' }, (err) => {
+			let filename = `${this.historyDir}/${this.startTime}.json`
+			fs.write(filename, JSON.stringify(this.getScoreboard()), { flag: 'w' }, (err) => {
 				if (err)
 					log.score(`Failed to write scoreboard to ${filename}: ${err.message}`)
 			})
