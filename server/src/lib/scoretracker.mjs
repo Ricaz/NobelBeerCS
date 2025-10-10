@@ -366,7 +366,8 @@ export default class Tracker extends EventEmitter {
 
 			// Write final scoreboard
 			const filename = `${this.historyDir}/${this.startTime}.json`
-			fs.writeFile(filename, JSON.stringify(this.getScoreboard()), { flag: 'wx' }, (err) => {
+
+			fs.writeFile(filename, JSON.stringify(this.getScoreboard()), { flag: 'w' }, (err) => {
 				if (err)
 					log.score(`Failed to write scoreboard to ${filename}: ${err.message}`)
 				else 
