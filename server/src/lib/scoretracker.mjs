@@ -1,6 +1,5 @@
 import * as path from 'node:path'
 import * as glob from 'glob'
-import * as url from 'node:url'
 import * as fs from 'node:fs'
 import { EventEmitter } from 'node:events'
 import * as log from './utility.mjs'
@@ -54,7 +53,7 @@ export default class Tracker extends EventEmitter {
 		this.state = newState
 		this.emit('state', this.state)
 
-		if (newState == 'ended') {
+		if (newState === 'ended') {
 			this.emit('stats', this.generatePauseStats())
 
 			// If a game ended, change back to idle after 30 hours
@@ -87,20 +86,17 @@ export default class Tracker extends EventEmitter {
 
 		// Only use players currently active
 		scores = scores.filter((p) => {
-			var found = this.board.getScores().find(e => e.id == p.id)
+			let found = this.board.getScores().find(e => e.id === p.id)
 			if (! found)
 				return false
 
 			console.log(`"${found.name}"  Active? ${found.active}. Team? ${found.team}`)
-			if (found && found.active && (found.team == 'CT' || found.team == 'TERRORIST'))
-				return true
-			else
-				return false
+			return !!(found && found.active && (found.team === 'CT' || found.team === 'TERRORIST'));
 		}).sort((a, b) => b.kd - a.kd)
 
 		let newTeams = { ct: [], t: [] }
 		scores.forEach((player, i) => {
-			if (i % 2 == 0) {
+			if (i % 2 === 0) {
 				newTeams.ct.push(player)
 				response.push({ steamid: player.id, team: 'CT' })
 			} else {
@@ -114,12 +110,10 @@ export default class Tracker extends EventEmitter {
 		log.score(`Counter-Terrorists:`)
 		newTeams.ct.forEach((p) => {
 			log.score(`${p.kd}  ${p.name}`)	
-			p = p.id
 		})
 		log.score(`Terrorists:`)
 		newTeams.t.forEach((p) => {
 			log.score(`${p.kd}  ${p.name}`)	
-			p = p.id
 		})
 
 		return response
@@ -147,6 +141,8 @@ export default class Tracker extends EventEmitter {
 			.map((file) => { return path.basename(file, '.json') })
 			.sort((a, b) => { return b - a })
 
+        log.score(`found ${files.length} files`)
+
 		const now = Date.now()
 		let delta = now - 2 * interval
 		let numGames = 0
@@ -167,14 +163,14 @@ export default class Tracker extends EventEmitter {
 	// Also calculates K/D for each player.
 	getStats(numGames = 0, sortBy = 'sips') {
 		log.score(`called tracker.getStats(${numGames}, ${sortBy})`)
-		var files = glob.sync(`${this.historyDir}/*.json`)
-		var loadedFiles = []
+		const files = glob.sync(`${this.historyDir}/*.json`)
+		let loadedFiles = []
 
-		if (numGames == 0)
+		if (numGames === 0)
 			numGames = files.length
 
 		// Get files by name (cant sort by ctime anymore as i fucked and deleted everything)
-		const gameFiles = files.sort((a, b) => path.basename(a, '.json') < path.basename(b, '.json'))
+		const gameFiles = files.sort((a, b) => Number(path.basename(a, '.json')) - Number(path.basename(b, '.json')))
 
 		// Load files until we have requested number of games (with >6 players)
 		while (loadedFiles.length < numGames) {
@@ -203,23 +199,23 @@ export default class Tracker extends EventEmitter {
 		// Loop over each loaded game, calculate K/D for each player,
 		// ignoring players with 0/0 stats. Should produce the same
 		// format as normal scoreboards, just with K/D added.
-		var scores = []
+		let scores = []
 		for (const game of loadedFiles) {
 			for (const score of game.scores) {
 				let player = scores.find((p) => {
-					return p.id == score.id
+					return p.id === score.id
 				})
-				let exists = player === undefined ? false : true
+				let exists = player !== undefined
 				let kd = 1
 
 				// Ignore players with 0/0.
 				// If players have 0 deaths, use kills as KD.
 				// If players have 0 kills, KD is 1/deaths
-				if (score.kills == 0 && score.deaths == 0) {
+				if (score.kills === 0 && score.deaths === 0) {
 					continue
-				} else if (score.kills > 0 && score.deaths == 0)
+				} else if (score.kills > 0 && score.deaths === 0)
 					kd = score.kills
-				else if (score.kills == 0 && score.deaths > 0)
+				else if (score.kills === 0 && score.deaths > 0)
 					kd = 1 / score.deaths
 				else 
 					kd = score.kills / score.deaths
@@ -237,9 +233,8 @@ export default class Tracker extends EventEmitter {
 						suicides: score.suicides,
 						sips: score.sips,
 						knifekills: score.knifekills,
-						knifed: score.knifed,
-						sips: score.sips
-					} 
+						knifed: score.knifed
+					}
 
 					scores.push(player)
 				}
@@ -271,12 +266,12 @@ export default class Tracker extends EventEmitter {
 	// Loads newest scoreboard. This enables us to recover a live game
 	// in case the web app crashes. Stats during the downtime will be lost.
 	loadScoreboard() {
-		var path = `${this.historyDir}/*.json`
-		var files = glob.sync(path)
+		const path = `${this.historyDir}/*.json`
+		const files = glob.sync(path)
 
 		if (files.length > 0) {
 			const newestFile = files.sort()[0]
-			var loaded
+			let loaded
 			try {
 				loaded = JSON.parse(fs.readFileSync(newestFile, { encoding: 'utf8' }))
 			} catch (e) {
@@ -307,10 +302,10 @@ export default class Tracker extends EventEmitter {
 	}
 
 	handleEvent(message) {
-		var cmd = message.cmd
-		var args = message.args
+		const cmd = message.cmd
+		const args = message.args
 
-		if (cmd == 'firstround') {
+		if (cmd === 'firstround') {
 			log.score('Game starting!')
 			this.startTime = Date.now()
 			this.running = true
@@ -318,25 +313,25 @@ export default class Tracker extends EventEmitter {
 			this.board.reset()
 		}
 
-		else if (cmd == 'playerjoined')
+		else if (cmd === 'playerjoined')
 			this.board.addPlayer(args.id, args.name, args.team)
 
-		else if (cmd == 'playerleft')
+		else if (cmd === 'playerleft')
 			this.board.removePlayer(args.id)
 
-		else if (cmd == 'playerteam')
+		else if (cmd === 'playerteam')
 			this.board.switchTeam(args.id, args.name, args.team)
 
-		else if (cmd == 'playersync') {
+		else if (cmd === 'playersync') {
 			// Deactivate players not on server
 			this.board.players.forEach((localPlayer) => {
-				var existsRemote = false
-				args.forEach((remotePlayer) => {
-					if (localPlayer.id == remotePlayer.id)
+                let existsRemote = false;
+                args.forEach((remotePlayer) => {
+					if (localPlayer.id === remotePlayer.id)
 						existsRemote = true
 				})
 
-				if (!existsRemote && localPlayer.active == true)
+				if (!existsRemote && localPlayer.active === true)
 					this.board.removePlayer(localPlayer.id)
 			});
 
@@ -350,27 +345,27 @@ export default class Tracker extends EventEmitter {
 		else if (! this.running)
 			return
 
-		else if (cmd == 'roundstart')
+		else if (cmd === 'roundstart')
 			this.board.handleNewRound()
 
-		else if (cmd == 'kill' || cmd == 'headshot' || cmd == 'grenade')
+		else if (cmd === 'kill' || cmd === 'headshot' || cmd === 'grenade')
 			this.board.handleKill(args[0], args[1])
 
 		else if (cmd.match(/knife$/))
 			this.board.handleKnife(args[0], args[1])
 
-		else if (cmd == 'tk' || cmd == 'mikkitk')
+		else if (cmd === 'tk' || cmd === 'mikkitk')
 			this.board.handleTeamkill(args[0], args[1])
 
-		else if (cmd == 'suicide')
+		else if (cmd === 'suicide')
 			this.board.handleSuicide(args[0])
 
-		else if (cmd == 'mapend' || cmd == 'mapchange') {
+		else if (cmd === 'mapend' || cmd === 'mapchange') {
 			log.score(`Game ended!`)
 			this.endTime = Date.now()
 
 			// Write final scoreboard
-			var filename = `${this.historyDir}/${this.startTime}.json`
+			const filename = `${this.historyDir}/${this.startTime}.json`
 			fs.writeFile(filename, JSON.stringify(this.getScoreboard()), { flag: 'wx' }, (err) => {
 				if (err)
 					log.score(`Failed to write scoreboard to ${filename}: ${err.message}`)
@@ -387,7 +382,7 @@ export default class Tracker extends EventEmitter {
 		// Write scoreboard to tmp file (to resume state if started during round)
 		// TODO: For some reason, file is sometimes written twice and I have no idea why..
 		if (this.running) {
-			var filename = `${this.historyDir}/${this.startTime}.json`
+			const filename = `${this.historyDir}/${this.startTime}.json`
 			fs.writeFile(filename, JSON.stringify(this.getScoreboard()), { flag: 'w' }, (err) => {
 				if (err)
 					log.score(`Failed to write scoreboard to ${filename}: ${err.message}`)
@@ -406,39 +401,38 @@ class Scoreboard {
 	addPlayer(id, name, team) {
 		if (! team)
 			team = "UNASSIGNED"
-		var player = this.getPlayer(id)
+		let player = this.getPlayer(id)
 		if (player) {
-			if (player.name != name) {
+			if (player.name !== name) {
 				player.name = name
 				log.score(`Rename "${player.name}" => "${name}"`)
 			}
-			if (player.team != team) {
+			if (player.team !== team) {
 				player.team = team
 				log.score(`Team switch: "${name}" => ${team}`)
 			}
 			player.active = true
-			return
 		} else {
 			log.score(`Adding player "${name}"`)
-			var player = new Player({ id: id, name: name, team: team })
+			let player = new Player({ id: id, name: name, team: team })
 			this.players.push(player)
 		}
 	}
 
 	switchTeam(id, name, team) {
-		var player = this.getPlayer(id)
+		let player = this.getPlayer(id)
 		if (! player) {
 			log.score(`Tried to switch team of "${name}", but player doesn't exist`)
 			return
 		}
-		if (player.team != team) {
+		if (player.team !== team) {
 			player.team = team
 			log.score(`Team switch: "${name}" => ${team}`)
 		}
 	}
 
 	removePlayer(id) {
-		var player = this.getPlayer(id)
+		let player = this.getPlayer(id)
 		if (player) {
 			log.score(`Removing player "${player.name}"`)
 			player.active = false
@@ -446,7 +440,7 @@ class Scoreboard {
 	}
 
 	getPlayer(steamid) {
-		return this.players.find(player => player.id == steamid)
+		return this.players.find(player => player.id === steamid)
 	}
 
 	getScores() {
@@ -463,8 +457,8 @@ class Scoreboard {
 	}
 
 	handleKnife(killerID, victimID) {
-		var killer = this.getPlayer(killerID)
-		var victim = this.getPlayer(victimID)
+		let killer = this.getPlayer(killerID)
+		let victim = this.getPlayer(victimID)
 		if (killer && victim) {
 			killer.kills  += 1
 			killer.knifekills += 1
@@ -476,8 +470,8 @@ class Scoreboard {
 	}
 
 	handleKill(killerID, victimID) {
-		var killer = this.getPlayer(killerID)
-		var victim = this.getPlayer(victimID)
+		let killer = this.getPlayer(killerID)
+		let victim = this.getPlayer(victimID)
 		if (killer && victim) {
 			killer.kills  += 1
 			killer.sips   += 2
@@ -489,7 +483,7 @@ class Scoreboard {
 	}
 
 	handleSuicide(playerID) {
-		var player = this.getPlayer(playerID)
+		let player = this.getPlayer(playerID)
 		if (player) {
 			log.score(`Player "${player.name}" committed suicide!`)
 			player.suicides += 1
@@ -499,8 +493,8 @@ class Scoreboard {
 	}
 
 	handleTeamkill(killerID, victimID) {
-		var killer = this.getPlayer(killerID)
-		var victim = this.getPlayer(victimID)
+		let killer = this.getPlayer(killerID)
+		let victim = this.getPlayer(victimID)
 		if (killer && victim) {
 			if (killer.sips < 20)
 				killer.sips += 10
@@ -516,20 +510,20 @@ class Scoreboard {
 	}
 
 	handleNewName(id, name) {
-		var player = this.getPlayer(id)
+		let player = this.getPlayer(id)
 		if (player) {
 			player.name = name
 		}
 	}
 
 	handlePlayerDisconnect(id) {
-		var player = this.getPlayer(id)
+		let player = this.getPlayer(id)
 		if (player)
 			player.active = false
 	}
 
 	handleMapChange(map) {
-		log.score(`Chaning map to ${map}`)
+		log.score(`Changing map to ${map}`)
 	}
 
 	reset() {
