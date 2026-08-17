@@ -171,13 +171,11 @@ export default class Tracker extends EventEmitter {
 		// Get files by name (cant sort by ctime anymore as i fucked and deleted everything)
 		const gameFiles = files.sort((a, b) => Number(path.basename(a, '.json')) - Number(path.basename(b, '.json')))
 
-		// Load files until we have requested number of games (with >6 players)
+		// Load files until we have requested number of games
 		while (loadedFiles.length < numGames) {
 			let game
 			let file = gameFiles.pop()
-			console.log(file)
 
-			// Skip loading files if invalid JSON or less than 7 players
 			try {
 				game = JSON.parse(fs.readFileSync(file))
 			} catch (e) {
@@ -186,7 +184,8 @@ export default class Tracker extends EventEmitter {
 				continue
 			}
 
-			if (game.scores.length <= 1) {
+			// Skip games with <2 players
+			if (game.scores.length < 2) {
 				numGames--
 				continue
 			}
@@ -384,7 +383,7 @@ export default class Tracker extends EventEmitter {
 		// TODO: For some reason, file is sometimes written twice and I have no idea why..
 		if (this.running) {
 			let filename = `${this.historyDir}/${this.startTime}.json`
-			fs.write(filename, JSON.stringify(this.getScoreboard()), { flag: 'w' }, (err) => {
+			fs.writeFile(filename, JSON.stringify(this.getScoreboard()), { flag: 'w' }, (err) => {
 				if (err)
 					log.score(`Failed to write scoreboard to ${filename}: ${err.message}`)
 			})
