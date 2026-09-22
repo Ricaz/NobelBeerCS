@@ -23,6 +23,13 @@ export default {
       audioElements: [],
       cooldowns: [],
       overlay: { text: '', show: false },
+      socket: null,
+      // 'lan': the active LAN (live scoreboard or LAN stats), 'all': all-time stats
+      mode: 'all',
+      allStats: [],
+      loadingAll: false,
+      // Only slide between pages after the first click, not on page load
+      animate: false,
     }
   },
 
@@ -31,8 +38,12 @@ export default {
       const live = this.state === 'live' || this.state === 'ended'
       return board("Scoreboard", HEADERS, this.scores.filter(p => p.active === true), live)
     },
-    totalScores() {
-      return board("No LAN active. All stats:", [ "Name (last seen)", ...STATS_HEADERS.slice(1) ], neutral(this.stats.full), this.state === 'idle')
+    lanActive() {
+      return this.state === 'live' || this.state === 'ended'
+    },
+    allScores() {
+      const title = this.lanActive ? "All stats" : "No LAN active. All stats:"
+      return board(title, [ "Name (last seen)", ...STATS_HEADERS.slice(1) ], neutral(this.allStats), true)
     },
     todayScores() {
       return board("Stats for today", STATS_HEADERS, neutral(this.stats.today), this.state === 'ended')
@@ -49,6 +60,7 @@ export default {
   methods: {
     connectWebSocket: function() {
       const socket = new WebSocket(import.meta.env.VITE_WEBSOCKET_URI)
+      this.socket = socket
 
       socket.addEventListener('open', (event) => {
         console.log('WebSocket connected!')
@@ -58,6 +70,7 @@ export default {
       socket.addEventListener('close', (event) => {
         console.log('WebSocket disconnected!')
         this.status = 'disconnected'
+        this.loadingAll = false
         setTimeout(() => { this.connectWebSocket() }, 2000)
       })
 
@@ -91,12 +104,20 @@ export default {
           break
         case "stats":
           this.stats = data.data
+          if (data.data.full)
+            this.allStats = data.data.full
+          break
+        case "allstats":
+          this.allStats = data.data
+          this.loadingAll = false
+          // Let the page render offscreen before sliding to it
+          this.$nextTick(() => requestAnimationFrame(() => { this.mode = 'all' }))
           break
         case "mapend":
           this.playMedia('assets/media/default/wii/wiishop.mp3')
           break
         case "state":
-          this.state = data.data
+          this.changeState(data.data)
           break
         case "tk":
         case "suicide":
@@ -112,6 +133,33 @@ export default {
       }
 
       this.playMedia(data.media)
+    },
+
+    changeState: function (state) {
+      const previous = this.state
+      this.state = state
+
+      // No LAN: only all-time stats. A game starting always gets the screen.
+      if (state === 'idle')
+        this.mode = 'all'
+      else if (state === 'live' || previous === 'idle')
+        this.mode = 'lan'
+    },
+
+    showLan: function () {
+      if (!this.lanActive)
+        return
+      this.animate = true
+      this.mode = 'lan'
+    },
+
+    // Fetches fresh all-time stats, then slides to them
+    showAll: function () {
+      if (this.mode === 'all' || this.loadingAll || this.socket?.readyState !== WebSocket.OPEN)
+        return
+      this.animate = true
+      this.loadingAll = true
+      this.socket.send(JSON.stringify({ cmd: 'getstats', args: { scope: 'all' } }))
     },
 
     playerName: function (id) {
@@ -191,29 +239,38 @@ export default {
             <label for="volume">Volume</label>
           </div>
 
-          <div class="row w-100">
-            <div v-if="todayScores.show" class="scores-today pb-5 col-6">
-              <Scoreboard :scoreboard="todayScores.scores" :title="todayScores.title" :headers="todayScores.headers" />
-            </div>
-            <div v-if="lanScores.show" class="scores-lan pb-5 col-6">
-              <Scoreboard :scoreboard="lanScores.scores" :title="lanScores.title" :headers="lanScores.headers" />
-            </div>
-          </div>
+          <nav class="modes" aria-label="Stats">
+            <button type="button" :class="{ active: mode === 'lan' }" :aria-pressed="mode === 'lan'" :disabled="!lanActive" :title="lanActive ? '' : 'No LAN right now'" @click="showLan">Active LAN</button>
+            <button type="button" :class="{ active: mode === 'all' }" :aria-pressed="mode === 'all'" :aria-busy="loadingAll" @click="showAll">
+              All stats<span v-if="loadingAll" class="loading" aria-hidden="true"></span>
+            </button>
+          </nav>
 
-          <div class="row w-100">
-            <div v-if="totalScores.show" class="scores-total pb-5 col-12">
-              <Scoreboard :scoreboard="totalScores.scores" :title="totalScores.title" :headers="totalScores.headers" />
+          <!-- Both pages sit side by side; the track slides to show one of them -->
+          <div class="pages">
+            <div class="track" :class="{ 'show-all': mode === 'all', animate }">
+              <section class="page" :inert="mode !== 'lan'">
+                <div class="row w-100">
+                  <div v-if="todayScores.show" class="scores-today pb-5 col-6">
+                    <Scoreboard :scoreboard="todayScores.scores" :title="todayScores.title" :headers="todayScores.headers" />
+                  </div>
+                  <div v-if="lanScores.show" class="scores-lan pb-5 col-6">
+                    <Scoreboard :scoreboard="lanScores.scores" :title="lanScores.title" :headers="lanScores.headers" />
+                  </div>
+                </div>
+
+                <div v-if="activeScores.show" class="scores-active pb-5">
+                  <Scoreboard :scoreboard="activeScores.scores" :title="activeScores.title" :headers="activeScores.headers" />
+                </div>
+              </section>
+
+              <section class="page" :inert="mode !== 'all'">
+                <div v-if="allScores.show" class="scores-total pb-5">
+                  <Scoreboard :scoreboard="allScores.scores" :title="allScores.title" :headers="allScores.headers" />
+                </div>
+              </section>
             </div>
           </div>
-
-          <div v-if="activeScores.show" class="scores-active pb-5">
-            <Scoreboard :scoreboard="activeScores.scores" :title="activeScores.title" :headers="activeScores.headers" />
-          </div>
-          <!--
-          <div class="scores-inactive pb-5">
-            <Scoreboard v-if="inactiveScores.show" :scoreboard="inactiveScores.scores" :title="inactiveScores.title" />
-          </div>
-          -->
 
           <audio ref="audio" id="audio">Audio not available</audio>
         </div>
@@ -229,9 +286,99 @@ export default {
   src: url('fonts/trebuc.ttf');
 }
 
-.status { 
+.status {
   font-family: monospace;
-  float: left;
+  position: absolute;
+  left: 1.5rem;
+  top: 1.5rem;
+}
+
+.modes {
+  display: flex;
+  justify-content: center;
+  gap: .5rem;
+  margin-bottom: 1.5rem;
+}
+
+.modes button {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .4rem 1.2rem;
+  font-size: 1.1rem;
+  color: rgb(255 255 255 / 60%);
+  background: transparent;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color .15s, background-color .15s, border-color .15s;
+}
+
+.modes button:hover:not(:disabled):not(.active) {
+  color: white;
+  border-color: rgb(255 255 255 / 40%);
+}
+
+.modes button.active {
+  color: white;
+  background: rgb(255 255 255 / 10%);
+  border-color: rgb(255 255 255 / 45%);
+}
+
+.modes button:disabled {
+  opacity: .35;
+  cursor: default;
+}
+
+.modes button:focus-visible {
+  outline: 2px solid #00abff;
+  outline-offset: 2px;
+}
+
+.modes .loading {
+  width: .8em;
+  height: .8em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Two pages side by side in a track twice the page width */
+.pages {
+  overflow: hidden;
+}
+
+.track {
+  display: flex;
+  align-items: flex-start;
+  width: 200%;
+}
+
+.track.animate {
+  transition: transform .5s cubic-bezier(.4, 0, .2, 1);
+}
+
+.track.show-all {
+  transform: translateX(-50%);
+}
+
+.page {
+  width: 50%;
+  min-width: 0;
+  padding: 0 .75rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .track.animate,
+  .modes .loading {
+    transition: none;
+    animation-duration: 2s;
+  }
 }
 
 .table td, .table th {

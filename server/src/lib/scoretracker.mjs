@@ -256,6 +256,8 @@ export default class Tracker extends EventEmitter {
 					continue
 				}
 
+				// Games are oldest first, so this ends up as the name last seen
+				player.name = score.name
 				player.kd += kd
 				player.kills += score.kills
 				player.deaths += score.deaths
