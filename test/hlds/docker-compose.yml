@@ -1,0 +1,15 @@
+# Local test server. See test/README.md.
+services:
+  hlds:
+    build: .
+    image: nobel-hlds
+    # Host networking so the server can reach the web app on localhost,
+    # and your CS client can connect to localhost:27015
+    network_mode: host
+    stdin_open: true
+    tty: true
+    environment:
+      NOBEL_SERVER_HOST: 127.0.0.1
+      MAP: de_dust2
+    volumes:
+      - ../../cstrike:/nobel:ro
