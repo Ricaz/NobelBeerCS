@@ -277,8 +277,8 @@ export default {
             <button type="button" :class="{ active: mode === 'all' }" :aria-pressed="mode === 'all'" :aria-busy="loadingAll" @click="showAll">
               All stats<span v-if="loadingAll" class="loading" aria-hidden="true"></span>
             </button>
-            <!-- Picking a LAN also slides to the All stats page -->
-            <select id="lan-select" class="form-select" aria-label="Show stats for" :value="selectedLan" :disabled="loadingAll" @change="selectLan">
+            <!-- Only on All stats; hidden (not removed) so the buttons don't move -->
+            <select id="lan-select" class="form-select" :class="{ concealed: mode !== 'all' }" aria-label="Show stats for" :value="selectedLan" :disabled="loadingAll" @change="selectLan">
               <option value="">All time</option>
               <option v-for="lan in lans" :key="lan.id" :value="lan.id">{{ lanLabel(lan) }}</option>
             </select>
@@ -395,6 +395,12 @@ export default {
   margin-left: .5rem;
   font-size: 1.1rem;
   border-radius: 999px;
+  transition: opacity .3s, visibility .3s;
+}
+
+.modes select.concealed {
+  opacity: 0;
+  visibility: hidden;
 }
 
 /* Two pages side by side in a track twice the page width */
