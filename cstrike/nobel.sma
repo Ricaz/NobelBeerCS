@@ -45,7 +45,8 @@ enum (+= 100)
     TASK_FLASH_PROTECTION,
     TASK_MODE_ANNOUNCE,
     TASK_BALANCE_POLL,
-    TASK_BALANCE_TIMEOUT
+    TASK_BALANCE_TIMEOUT,
+    TASK_PAUSE_ACK
 }
 
 enum ModState
@@ -113,6 +114,8 @@ new RoundMode:g_mode = MODE_NORMAL
 new RoundMode:g_nextMode = MODE_NORMAL
 new bool:g_endModeAfterRound
 new bool:g_paused
+// A pause or unpause was sent to a client and its pauseAck hasn't come back yet
+new bool:g_pauseToggling
 new g_pcvarPausable
 new g_pausableBefore = -1
 new g_roundCount
@@ -1046,6 +1049,12 @@ unpause_game()
 // the first player, which may be a bot that ignores client commands.
 toggle_pause()
 {
+    // Several pausing events can happen in one frame (e.g. one grenade killing
+    // two teammates). g_paused only changes when the pauseAck arrives, so without
+    // this the second event would toggle the pause right back off.
+    if (g_pauseToggling)
+        return
+
     new players[MAX_PLAYERS], num
     get_players(players, num, "ch")
     if (!num) {
@@ -1057,6 +1066,19 @@ toggle_pause()
     g_pausableBefore = get_pcvar_num(g_pcvarPausable)
     set_pcvar_num(g_pcvarPausable, 1)
     client_cmd(players[0], "pause;pauseAck")
+    g_pauseToggling = true
+    // In case the pauseAck never comes (e.g. that player disconnects)
+    set_task(3.0, "task_pause_ack_timeout", TASK_PAUSE_ACK)
+}
+
+public task_pause_ack_timeout()
+{
+    log_amx("Pausing: no confirmation from the client, giving up")
+    g_pauseToggling = false
+    if (g_pausableBefore != -1) {
+        set_pcvar_num(g_pcvarPausable, g_pausableBefore)
+        g_pausableBefore = -1
+    }
 }
 
 // Both toggle_pause() and amx_pause make a client run "pause;pauseAck". admincmd
@@ -1069,6 +1091,8 @@ public client_command(id)
         return PLUGIN_CONTINUE
 
     g_paused = !g_paused
+    g_pauseToggling = false
+    remove_task(TASK_PAUSE_ACK)
     log_amx(g_paused ? "Game paused" : "Game resumed")
     // The web app's killfeed stops its timers while paused
     send_event(g_paused ? "paused" : "resumed")
