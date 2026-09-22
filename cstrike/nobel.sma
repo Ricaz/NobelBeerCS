@@ -60,7 +60,6 @@ enum Setting
 {
     SET_PAUSE,
     SET_KNIFEPAUSE,
-    SET_SOUND,
     SET_BADUM,
     SET_FLASH,
     SET_ANTIZOOMPISTOL,
@@ -69,7 +68,6 @@ enum Setting
 new const SETTING_CMD[Setting][] = {
     "nobel_pause",
     "nobel_knifepause",
-    "nobel_sound",
     "nobel_badum",
     "nobel_flash",
     "nobel_antizoompistol",
@@ -78,14 +76,13 @@ new const SETTING_CMD[Setting][] = {
 new const SETTING_NAME[Setting][] = {
     "pausing",
     "knife pausing",
-    "sound",
     "badum",
     "team flash",
     "antizoompistol",
     "flash protection"
 }
-new const bool:SETTING_ANNOUNCE[Setting] = { true, true, true, true, false, true, true }
-new bool:g_setting[Setting] = { false, false, false, true, false, false, false }
+new const bool:SETTING_ANNOUNCE[Setting] = { true, true, true, false, true, true }
+new bool:g_setting[Setting] = { false, false, true, false, false, false }
 
 // Special rounds. Only one can be active or queued at a time.
 enum RoundMode
@@ -1526,7 +1523,6 @@ public cmd_nobel_serverstart(id, level, cid)
         return PLUGIN_HANDLED
 
     g_enabled = true
-    g_setting[SET_SOUND] = true
     g_setting[SET_PAUSE] = true
     g_setting[SET_KNIFEPAUSE] = true
     g_setting[SET_ANTIZOOMPISTOL] = true

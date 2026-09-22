@@ -3,6 +3,8 @@ import * as fs from 'node:fs'
 import { EventEmitter } from 'node:events'
 import * as log from './utility.mjs'
 
+const SIPS_PER_BEER = 20
+
 class Player {
 	constructor(args) {
 		this.id = args.id
@@ -452,12 +454,8 @@ class Scoreboard {
 		let killer = this.getPlayer(killerID)
 		let victim = this.getPlayer(victimID)
 		if (killer && victim) {
-			if (killer.sips < 20)
-				killer.sips += 10
-			else if (killer.sips % 20 < 4)
-				killer.sips += 3
-			else
-				killer.sips += killer.sips % 20
+			// Finish your beer: add the sips remaining in the current one
+			killer.sips += SIPS_PER_BEER - killer.sips % SIPS_PER_BEER
 			killer.teamkills += 1
 			killer.kills  += 1
 			victim.deaths += 1
