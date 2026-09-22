@@ -169,7 +169,7 @@ ws.on('connection', (conn, req) => {
 	// Send list of files
 	conn.send(JSON.stringify({ cmd: 'filelist', data: getMediaList() }))
 
-	// Requests from the page: { cmd: 'getstats', args: { scope: 'all' } }
+	// Requests from the page: { cmd: 'getstats', args: { scope: 'all' | 'lan', id } }
 	conn.on('message', (data) => {
 		log.ws(`[${clientAddress}]: ${data}`)
 		let request
@@ -179,8 +179,10 @@ ws.on('connection', (conn, req) => {
 			return
 		}
 
-		if (request.cmd === 'getstats' && request.args?.scope === 'all')
-			conn.send(JSON.stringify({ cmd: 'allstats', data: tracker.getStats() }))
+		if (request.cmd === 'getstats') {
+			const lanId = request.args?.scope === 'lan' ? Number(request.args.id) : null
+			conn.send(JSON.stringify({ cmd: 'allstats', data: tracker.getStatsReply(lanId) }))
+		}
 	})
 
 	conn.on('close', (reason, description) => {

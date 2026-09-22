@@ -27,6 +27,10 @@ export default {
       // 'lan': the active LAN (live scoreboard or LAN stats), 'all': all-time stats
       mode: 'all',
       allStats: [],
+      allHighlights: null,
+      // LAN events for the dropdown, and the selected one ('' = all time)
+      lans: [],
+      selectedLan: '',
       loadingAll: false,
       // Only slide between pages after the first click, not on page load
       animate: false,
@@ -42,7 +46,8 @@ export default {
       return this.state === 'live' || this.state === 'ended'
     },
     allScores() {
-      const title = this.lanActive ? "All stats" : "No LAN active. All stats:"
+      const lan = this.lans.find((l) => l.id === this.selectedLan)
+      const title = lan ? lan.name : this.lanActive ? "All time" : "No LAN active. All time:"
       return board(title, [ "Name (last seen)", ...STATS_HEADERS.slice(1) ], neutral(this.allStats), true)
     },
     todayScores() {
@@ -104,11 +109,12 @@ export default {
           break
         case "stats":
           this.stats = data.data
-          if (data.data.full)
-            this.allStats = data.data.full
+          // Idle stats are the all-time stats, unless a LAN is picked
+          if (data.data.all && !this.selectedLan)
+            this.applyAllStats(data.data.all)
           break
         case "allstats":
-          this.allStats = data.data
+          this.applyAllStats(data.data)
           this.loadingAll = false
           // Let the page render offscreen before sliding to it
           this.$nextTick(() => requestAnimationFrame(() => { this.mode = 'all' }))
@@ -153,13 +159,37 @@ export default {
       this.mode = 'lan'
     },
 
-    // Fetches fresh all-time stats, then slides to them
+    // Fetches fresh stats for the selected LAN (or all time), then slides to them
     showAll: function () {
-      if (this.mode === 'all' || this.loadingAll || this.socket?.readyState !== WebSocket.OPEN)
+      if (this.mode === 'all')
         return
       this.animate = true
+      this.requestStats()
+    },
+
+    selectLan: function (event) {
+      this.selectedLan = event.target.value ? Number(event.target.value) : ''
+      this.requestStats()
+    },
+
+    requestStats: function () {
+      if (this.loadingAll || this.socket?.readyState !== WebSocket.OPEN)
+        return
       this.loadingAll = true
-      this.socket.send(JSON.stringify({ cmd: 'getstats', args: { scope: 'all' } }))
+      const args = this.selectedLan ? { scope: 'lan', id: this.selectedLan } : { scope: 'all' }
+      this.socket.send(JSON.stringify({ cmd: 'getstats', args }))
+    },
+
+    applyAllStats: function (data) {
+      this.allStats = data.scores
+      this.allHighlights = data.highlights
+      this.lans = data.lans
+      this.selectedLan = data.lan ?? ''
+    },
+
+    lanLabel: function (lan) {
+      const date = (time) => new Date(time).toLocaleDateString('da-DK', { day: 'numeric', month: 'short' })
+      return `${lan.name} · ${date(lan.start)}–${date(lan.end)} · ${lan.games} ${lan.games === 1 ? 'map' : 'maps'}`
     },
 
     playerName: function (id) {
@@ -250,6 +280,7 @@ export default {
           <div class="pages">
             <div class="track" :class="{ 'show-all': mode === 'all', animate }">
               <section class="page" :inert="mode !== 'lan'">
+                <Highlights v-if="state === 'ended'" :highlights="stats.lanHighlights" />
                 <div class="row w-100">
                   <div v-if="todayScores.show" class="scores-today pb-5 col-6">
                     <Scoreboard :scoreboard="todayScores.scores" :title="todayScores.title" :headers="todayScores.headers" />
@@ -265,6 +296,14 @@ export default {
               </section>
 
               <section class="page" :inert="mode !== 'all'">
+                <div class="lan-picker">
+                  <label for="lan-select">Show stats for</label>
+                  <select id="lan-select" class="form-select" :value="selectedLan" :disabled="loadingAll" @change="selectLan">
+                    <option value="">All time</option>
+                    <option v-for="lan in lans" :key="lan.id" :value="lan.id">{{ lanLabel(lan) }}</option>
+                  </select>
+                </div>
+                <Highlights :highlights="allHighlights" />
                 <div v-if="allScores.show" class="scores-total pb-5">
                   <Scoreboard :scoreboard="allScores.scores" :title="allScores.title" :headers="allScores.headers" />
                 </div>
@@ -346,6 +385,21 @@ export default {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.lan-picker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  font-size: 1.1rem;
+}
+
+.lan-picker select {
+  width: auto;
+  min-width: 22rem;
+  font-size: 1.1rem;
 }
 
 /* Two pages side by side in a track twice the page width */

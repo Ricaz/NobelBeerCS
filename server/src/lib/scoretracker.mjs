@@ -24,6 +24,29 @@ const DAY_STARTS_AT = 12
 // Show stats instead of the live scoreboard when a game has been quiet this long,
 // in case its end event never arrived
 const GAME_IDLE_AFTER = 20 * 60 * 1000
+// Groups of fewer games are casual evenings, not LANs (except the current LAN)
+const MIN_LAN_GAMES = 10
+
+// LANs are named by the season they start in, e.g. "Easter 2024"
+const SEASONS = [ 'Winter', 'Winter', 'Easter', 'Easter', 'Easter', 'Summer', 'Summer', 'Summer', 'Autumn', 'Autumn', 'Autumn', 'Christmas' ]
+
+// "Most øls" etc. for a list of player stats
+function highlights(scores) {
+	const most = (field, format = (v) => v) => {
+		const max = Math.max(0, ...scores.map((p) => p[field]))
+		if (!max)
+			return null
+		const names = scores.filter((p) => p[field] === max).map((p) => p.name)
+		return { names, value: format(max) }
+	}
+
+	return {
+		beers: most('sips', (sips) => (sips / SIPS_PER_BEER).toFixed(1)),
+		teamkills: most('teamkills'),
+		knifekills: most('knifekills'),
+		suicides: most('suicides'),
+	}
+}
 
 function isRealGame(game) {
 	const rounds = Math.max(0, ...game.scores.map((p) => p.rounds || 0))
@@ -129,14 +152,61 @@ export default class Tracker extends EventEmitter {
 	}
 
 	generateIdleStats() {
-		return { full: this.getStats() }
+		return { all: this.getStatsReply() }
 	}
 
 	generatePauseStats() {
+		const lan = this.getStatsSince(this.lanStart())
 		return {
 			today: this.getStatsSince(this.todayStart()),
-			lan: this.getStatsSince(this.lanStart()),
+			lan,
+			lanHighlights: highlights(lan),
 		}
+	}
+
+	// Stats for the "All stats" page: all time, or one LAN by id
+	getStatsReply(lanId = null) {
+		const lans = this.getLans()
+		const lan = lanId ? lans.find((l) => l.id === lanId) : null
+		const scores = lan ? this.sumStats(lan.entries) : this.getStats()
+		return {
+			lan: lan?.id ?? null,
+			scores,
+			highlights: highlights(scores),
+			lans: lans.map(({ entries, ...info }) => info),
+		}
+	}
+
+	// LAN events, newest first: [ { id, name, start, end, games, entries } ].
+	// The id is the start time of the LAN's first game.
+	getLans() {
+		const groups = []
+		for (const entry of this.realGames()) {
+			const group = groups.at(-1)
+			if (group && entry.time - group.at(-1).time < LAN_GAP)
+				group.push(entry)
+			else
+				groups.push([ entry ])
+		}
+
+		const current = this.state !== 'idle' ? groups.at(-1) : null
+		const lans = groups.filter((group) => group.length >= MIN_LAN_GAMES || group === current)
+
+		// Number LANs sharing a season: "Summer 2024", "Summer 2024 (2)"
+		const seen = {}
+		return lans.map((entries) => {
+			const start = new Date(entries[0].time)
+			const base = `${SEASONS[start.getMonth()]} ${start.getFullYear()}`
+			seen[base] = (seen[base] || 0) + 1
+			return {
+				id: entries[0].time,
+				name: seen[base] > 1 ? `${base} (${seen[base]})` : base,
+				start: entries[0].time,
+				end: entries.at(-1).time,
+				games: entries.length,
+				entries,
+			}
+		}).reverse()
 	}
 
 	realGames() {

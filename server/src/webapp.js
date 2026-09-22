@@ -4,11 +4,13 @@ import App from './components/App.vue'
 import Scoreboard from './components/Scoreboard.vue'
 import ScoreboardRow from './components/ScoreboardRow.vue'
 import Overlay from './components/Overlay.vue'
+import Highlights from './components/Highlights.vue'
 
 const app = createApp(App)
 	.component('Scoreboard', Scoreboard)
 	.component('ScoreboardRow', ScoreboardRow)
 	.component('Overlay', Overlay)
+	.component('Highlights', Highlights)
 	.mount('#app')
 
 import 'bootstrap/dist/js/bootstrap.js'
