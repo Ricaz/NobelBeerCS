@@ -111,6 +111,8 @@ new RoundMode:g_mode = MODE_NORMAL
 new RoundMode:g_nextMode = MODE_NORMAL
 new bool:g_endModeAfterRound
 new bool:g_paused
+new g_pcvarPausable
+new g_pausableBefore = -1
 new g_roundCount
 new g_winStreakT
 new g_winStreakCT
@@ -223,6 +225,7 @@ public plugin_init()
     log_amx("Map type: %s", g_mapType)
 
     g_msgScreenFade = get_user_msgid("ScreenFade")
+    g_pcvarPausable = get_cvar_pointer("pausable")
     create_pause_menu()
     load_overrides()
 
@@ -962,8 +965,7 @@ pause_game()
         return
 
     log_amx("Pausing game")
-    server_cmd("amx_pause")
-    server_exec()
+    toggle_pause()
 }
 
 unpause_game()
@@ -974,12 +976,29 @@ unpause_game()
     client_print(0, print_chat, "Go go go!")
     send_event("unpause")
     log_amx("Unpausing game")
-    server_cmd("amx_pause")
-    server_exec()
+    toggle_pause()
 }
 
-// amx_pause makes a client run "pause;pauseAck". admincmd blocks pauseAck,
-// so this has to be the client_command forward and not register_clcmd.
+// Only clients can pause the engine. Does the same as amx_pause, except it
+// makes sure a human runs the command: amx_pause from the server console picks
+// the first player, which may be a bot that ignores client commands.
+toggle_pause()
+{
+    new players[MAX_PLAYERS], num
+    get_players(players, num, "ch")
+    if (!num) {
+        log_amx("Cannot pause: no human players on the server")
+        return
+    }
+
+    // Allow pausing only until the pauseAck comes back
+    g_pausableBefore = get_pcvar_num(g_pcvarPausable)
+    set_pcvar_num(g_pcvarPausable, 1)
+    client_cmd(players[0], "pause;pauseAck")
+}
+
+// Both toggle_pause() and amx_pause make a client run "pause;pauseAck". admincmd
+// blocks pauseAck, so this has to be the client_command forward and not register_clcmd.
 public client_command(id)
 {
     new cmd[16]
@@ -989,6 +1008,11 @@ public client_command(id)
 
     g_paused = !g_paused
     log_amx("Changed pause state to: %s", g_paused ? "true" : "false")
+
+    if (g_pausableBefore != -1) {
+        set_pcvar_num(g_pcvarPausable, g_pausableBefore)
+        g_pausableBefore = -1
+    }
 
     if (g_setting[SET_PAUSE])
         show_pause_menu(g_paused)
