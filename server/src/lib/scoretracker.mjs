@@ -15,6 +15,16 @@ const MIN_ACTIVE_PLAYERS = 4
 const BALANCE_TOLERANCE = 0.03
 const RATING_PRIOR = 20
 
+// LAN events: games less than LAN_GAP apart belong to the same LAN, which counts
+// as active until LAN_ACTIVE_FOR after its latest game started
+const LAN_GAP = 3 * 86400 * 1000
+const LAN_ACTIVE_FOR = 30 * 3600 * 1000
+// "Today" starts at this hour (server time). We play from ~21:00 into the morning.
+const DAY_STARTS_AT = 12
+// Show stats instead of the live scoreboard when a game has been quiet this long,
+// in case its end event never arrived
+const GAME_IDLE_AFTER = 20 * 60 * 1000
+
 function isRealGame(game) {
 	const rounds = Math.max(0, ...game.scores.map((p) => p.rounds || 0))
 	const active = game.scores.filter((p) => p.kills || p.deaths).length
@@ -46,7 +56,7 @@ export default class Tracker extends EventEmitter {
 		this.running = false
 		this.board
 		this.historyDir = path.resolve(args?.historyDir || 'history')
-		this.writeTimer = null
+		this.writeTimers = new Map() // per game start time
 
 		// Ensure history dir exists
 		if (! fs.existsSync(this.historyDir))
@@ -55,15 +65,15 @@ export default class Tracker extends EventEmitter {
 		// All finished (and the current) games, sorted oldest first: [ { time, game } ]
 		this.history = this.loadHistory()
 
-		// Set state 'ended' if less than 30 hours since last game
-		if (Date.now() - this.getLatestGameDate() < (3600*30*1000))
-			this.state = 'ended'
-		else
-			this.state = 'idle'
+		this.lastEventTime = 0
+		this.state = this.currentState()
 
 		// Load temp scoreboard if exists
 		this.board = new Scoreboard()
 		this.loadScoreboard()
+
+		// The state also changes with time: LANs end, games go quiet
+		setInterval(() => this.updateState(), 60 * 1000).unref()
 	}
 
 	loadHistory() {
@@ -85,32 +95,70 @@ export default class Tracker extends EventEmitter {
 		return history
 	}
 
-	changeState(newState) {
-		this.state = newState
-		this.emit('state', this.state)
+	// 'live': a game is running, 'ended': between games at a LAN, 'idle': no LAN
+	currentState() {
+		if (this.running && Date.now() - this.lastEventTime < GAME_IDLE_AFTER)
+			return 'live'
 
-		if (newState === 'ended') {
-			this.emit('stats', this.generatePauseStats())
+		const latest = this.realGames().at(-1)
+		if (latest && Date.now() - latest.time < LAN_ACTIVE_FOR)
+			return 'ended'
 
-			// If a game ended, change back to idle after 30 hours
-			setTimeout(() => {
-				this.state = 'idle'
-				this.emit('state', this.state)
-			}, 3600 * 30 * 1000)
-		}
+		return 'idle'
+	}
+
+	updateState() {
+		const state = this.currentState()
+		if (state === this.state)
+			return
+
+		log.score(`State: ${this.state} => ${state}`)
+		this.state = state
+		this.emit('state', state)
+		if (state !== 'live')
+			this.emit('stats', this.generateStats())
+	}
+
+	// Stats to show in the current state (none while live)
+	generateStats() {
+		if (this.state === 'ended')
+			return this.generatePauseStats()
+		if (this.state === 'idle')
+			return this.generateIdleStats()
+		return null
 	}
 
 	generateIdleStats() {
-		let totalStats = this.getStats()
-
-		return { full: totalStats }
+		return { full: this.getStats() }
 	}
 
 	generatePauseStats() {
-		let lanStats = this.getStatsInterval()
-		let todayStats = this.getStatsInterval(3600 * 16 * 1000)
+		return {
+			today: this.getStatsSince(this.todayStart()),
+			lan: this.getStatsSince(this.lanStart()),
+		}
+	}
 
-		return { today: todayStats, lan: lanStats }
+	realGames() {
+		return this.history.filter((entry) => isRealGame(entry.game))
+	}
+
+	// Start time of the first game of the latest LAN
+	lanStart() {
+		const games = this.realGames()
+		let start = games.at(-1)?.time ?? Date.now()
+		for (let i = games.length - 2; i >= 0 && start - games[i].time < LAN_GAP; i--)
+			start = games[i].time
+		return start
+	}
+
+	// The latest DAY_STARTS_AT o'clock
+	todayStart() {
+		const start = new Date()
+		if (start.getHours() < DAY_STARTS_AT)
+			start.setDate(start.getDate() - 1)
+		start.setHours(DAY_STARTS_AT, 0, 0, 0)
+		return start.getTime()
 	}
 
 	// Kills / deaths over the player's own last `numGames` real games (all if 0)
@@ -154,42 +202,19 @@ export default class Tracker extends EventEmitter {
 		return response
 	}
 
-	getLatestGameDate() {
-		const latest = this.history.at(-1)?.time
-		log.score(`Latest game: ${latest}`)
-		return latest
-	}
-
-	// Generate stats for multiple games. Iterates back over games
-	// that fit within `interval` window from latest game. For example,
-	// if you set `interval` to 12 hours, you could get all stats from current session,
-	// or with `interval` to 3 days, get all stats for the entire LAN.
-	//
-	// Defaults to 3 days.
-	getStatsInterval(interval = 3 * 86400 * 1000) {
-		const times = this.history.map((entry) => entry.time).reverse()
-
-		let delta = Date.now() - 2 * interval
-		let numGames = 0
-		let current
-
-		while ((current = times.shift()) > delta) {
-			numGames++
-			delta = current - interval
-		}
-
-		if (numGames > 0)
-			return this.getStats(numGames)
-		else
-			return []
-	}
-
 	// Adds together the latest `numGames` scoreboards (all if 0).
 	// Also calculates K/D for each player.
 	getStats(numGames = 0, sortBy = 'sips') {
-		const games = (numGames > 0 ? this.history.slice(-numGames) : this.history)
-			.map((entry) => entry.game)
-			.filter(isRealGame)
+		return this.sumStats(numGames > 0 ? this.history.slice(-numGames) : this.history, sortBy)
+	}
+
+	// Stats for all games started at or after `time`
+	getStatsSince(time) {
+		return this.sumStats(this.history.filter((entry) => entry.time >= time))
+	}
+
+	sumStats(entries, sortBy = 'sips') {
+		const games = entries.map((entry) => entry.game).filter(isRealGame)
 
 		log.score(`getStats() using ${games.length} games`)
 
@@ -257,7 +282,8 @@ export default class Tracker extends EventEmitter {
 			this.startTime = loaded.startTime
 			this.board.players = loaded.scores
 			this.running = true
-			this.changeState('live')
+			this.lastEventTime = Date.now()
+			this.updateState()
 			return
 		}
 
@@ -282,28 +308,37 @@ export default class Tracker extends EventEmitter {
 		else
 			this.history.push({ time: this.startTime, game })
 
-		clearTimeout(this.writeTimer)
-		this.writeTimer = setTimeout(() => {
+		clearTimeout(this.writeTimers.get(game.startTime))
+		this.writeTimers.set(game.startTime, setTimeout(() => {
+			this.writeTimers.delete(game.startTime)
 			const filename = `${this.historyDir}/${game.startTime}.json`
 			const tmpname = `${filename}.tmp`
 			fs.promises.writeFile(tmpname, JSON.stringify(game))
 				.then(() => fs.promises.rename(tmpname, filename))
 				.then(() => { if (game.endTime) log.score(`Wrote final scoreboard to file ${filename}`) })
 				.catch((err) => log.score(`Failed to write scoreboard to ${filename}: ${err.message}`))
-		}, immediately ? 0 : 1000)
+		}, immediately ? 0 : 1000))
 	}
 
 	handleEvent(message) {
 		const cmd = message.cmd
 		const args = message.args
 
+		if (this.running)
+			this.lastEventTime = Date.now()
+
 		if (cmd === 'firstround') {
+			// The previous game's end event may have been lost
+			if (this.running)
+				this.endGame(this.lastEventTime)
+
 			log.score('Game starting!')
 			this.startTime = Date.now()
 			this.endTime = undefined
 			this.running = true
-			this.changeState('live')
+			this.lastEventTime = Date.now()
 			this.board.reset()
+			this.updateState()
 		}
 
 		else if (cmd === 'playerjoined')
@@ -349,17 +384,23 @@ export default class Tracker extends EventEmitter {
 			this.board.handleSuicide(args[0])
 
 		else if (cmd === 'mapend' || cmd === 'mapchange') {
-			log.score(`Game ended!`)
-			this.endTime = Date.now()
-			this.saveScoreboard(true)
-			this.running = false
-			this.changeState('ended')
+			this.endGame(Date.now())
+			this.updateState()
 			return
 		}
 
 		// Save scoreboard (to resume state if the server restarts during a game)
-		if (this.running)
+		if (this.running) {
 			this.saveScoreboard()
+			this.updateState()
+		}
+	}
+
+	endGame(endTime) {
+		log.score(`Game ended!`)
+		this.endTime = endTime
+		this.saveScoreboard(true)
+		this.running = false
 	}
 }
 

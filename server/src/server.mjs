@@ -97,11 +97,8 @@ function handleData(data, reply) {
 }
 
 function handleMessage(message, reply) {
-	if (message.cmd == 'getfullstats') {
-		let stats = tracker.getStatsInterval()
-		if (stats)
-			broadcast(stats)
-	}
+	if (message.cmd == 'getfullstats')
+		broadcast({ cmd: 'stats', data: tracker.generatePauseStats() })
 
 	if (message.cmd == 'getstats') {
 		let stats = tracker.getStats(...message.args)
@@ -163,18 +160,11 @@ ws.on('connection', (conn, req) => {
 	var fullState = { cmd: 'scoreboard', args: [ tracker.getScoreboard() ] }
 	conn.send(JSON.stringify(fullState))
 
-	log.ws('Sending stats')
-	if (tracker.state === 'ended') {
-		log.ws(`Current state '${tracker.state}', sending pause stats`)
-		conn.send(JSON.stringify({ cmd: 'state', data: 'ended' }))
-		conn.send(JSON.stringify({ cmd: 'stats', data: tracker.generatePauseStats() }))
-	} else if (tracker.state === 'idle') {
-		log.ws(`Current state '${tracker.state}', sending idle stats`)
-		conn.send(JSON.stringify({ cmd: 'state', data: 'idle' }))
-		conn.send(JSON.stringify({ cmd: 'stats', data: tracker.generateIdleStats() }))
-	} else if (tracker.state === 'live') {
-		conn.send(JSON.stringify({ cmd: 'state', data: 'live' }))
-	}
+	log.ws(`Sending state '${tracker.state}' and stats`)
+	conn.send(JSON.stringify({ cmd: 'state', data: tracker.state }))
+	const stats = tracker.generateStats()
+	if (stats)
+		conn.send(JSON.stringify({ cmd: 'stats', data: stats }))
 
 	// Send list of files
 	conn.send(JSON.stringify({ cmd: 'filelist', data: getMediaList() }))
