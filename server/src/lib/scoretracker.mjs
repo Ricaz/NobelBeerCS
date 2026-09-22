@@ -161,6 +161,7 @@ export default class Tracker extends EventEmitter {
 			today: this.getStatsSince(this.todayStart()),
 			lan,
 			lanHighlights: highlights(lan),
+			lans: this.getLanList(),
 		}
 	}
 
@@ -175,6 +176,11 @@ export default class Tracker extends EventEmitter {
 			highlights: highlights(scores),
 			lans: lans.map(({ entries, ...info }) => info),
 		}
+	}
+
+	// LANs for the dropdown, without their games
+	getLanList() {
+		return this.getLans().map(({ entries, ...info }) => info)
 	}
 
 	// LAN events, newest first: [ { id, name, start, end, games, entries } ].

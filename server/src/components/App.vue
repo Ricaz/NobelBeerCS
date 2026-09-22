@@ -109,6 +109,8 @@ export default {
           break
         case "stats":
           this.stats = data.data
+          if (data.data.lans)
+            this.lans = data.data.lans
           // Idle stats are the all-time stats, unless a LAN is picked
           if (data.data.all && !this.selectedLan)
             this.applyAllStats(data.data.all)
@@ -169,6 +171,7 @@ export default {
 
     selectLan: function (event) {
       this.selectedLan = event.target.value ? Number(event.target.value) : ''
+      this.animate = true
       this.requestStats()
     },
 
@@ -274,6 +277,11 @@ export default {
             <button type="button" :class="{ active: mode === 'all' }" :aria-pressed="mode === 'all'" :aria-busy="loadingAll" @click="showAll">
               All stats<span v-if="loadingAll" class="loading" aria-hidden="true"></span>
             </button>
+            <!-- Picking a LAN also slides to the All stats page -->
+            <select id="lan-select" class="form-select" aria-label="Show stats for" :value="selectedLan" :disabled="loadingAll" @change="selectLan">
+              <option value="">All time</option>
+              <option v-for="lan in lans" :key="lan.id" :value="lan.id">{{ lanLabel(lan) }}</option>
+            </select>
           </nav>
 
           <!-- Both pages sit side by side; the track slides to show one of them -->
@@ -296,13 +304,6 @@ export default {
               </section>
 
               <section class="page" :inert="mode !== 'all'">
-                <div class="lan-picker">
-                  <label for="lan-select">Show stats for</label>
-                  <select id="lan-select" class="form-select" :value="selectedLan" :disabled="loadingAll" @change="selectLan">
-                    <option value="">All time</option>
-                    <option v-for="lan in lans" :key="lan.id" :value="lan.id">{{ lanLabel(lan) }}</option>
-                  </select>
-                </div>
                 <Highlights :highlights="allHighlights" />
                 <div v-if="allScores.show" class="scores-total pb-5">
                   <Scoreboard :scoreboard="allScores.scores" :title="allScores.title" :headers="allScores.headers" />
@@ -334,6 +335,7 @@ export default {
 
 .modes {
   display: flex;
+  align-items: center;
   justify-content: center;
   gap: .5rem;
   margin-bottom: 1.5rem;
@@ -387,19 +389,12 @@ export default {
   to { transform: rotate(360deg); }
 }
 
-.lan-picker {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-  font-size: 1.1rem;
-}
-
-.lan-picker select {
+.modes select {
   width: auto;
   min-width: 22rem;
+  margin-left: .5rem;
   font-size: 1.1rem;
+  border-radius: 999px;
 }
 
 /* Two pages side by side in a track twice the page width */
