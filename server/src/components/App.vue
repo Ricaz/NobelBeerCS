@@ -269,28 +269,24 @@ export default {
     <div class="row">
       <div class="col-12 pt-4">
         <div class="container-fluid">
-          <!-- Buttons left, LAN dropdown centered, status and volume on the right -->
+          <!-- Status and volume left, LAN dropdown centered, buttons on the right -->
           <nav class="modes" aria-label="Stats">
-            <div class="mode-buttons">
-              <button type="button" :class="{ active: mode === 'lan' }" :aria-pressed="mode === 'lan'" :disabled="!lanActive" :title="lanActive ? '' : 'No LAN right now'" @click="showLan">Active LAN</button>
-              <button type="button" :class="{ active: mode === 'all' }" :aria-pressed="mode === 'all'" :aria-busy="loadingAll" @click="showAll">
-                All stats<span v-if="loadingAll" class="loading" aria-hidden="true"></span>
-              </button>
+            <!-- Status and volume on three compact lines -->
+            <div class="status">
+              <div>Connection: <span class="value">{{ status }}</span></div>
+              <div>State: <span class="value">{{ state }}</span></div>
+              <label class="volume">Volume: <input class="slider" type="range" ref="volume" step="1" min="0" max="100" v-model="volume" v-on:change="volumeChange" /></label>
             </div>
             <!-- Only shown on All stats -->
             <select id="lan-select" class="form-select" :class="{ concealed: mode !== 'all' }" aria-label="Show stats for" :value="selectedLan" :disabled="loadingAll" @change="selectLan">
               <option value="">All time</option>
               <option v-for="lan in lans" :key="lan.id" :value="lan.id">{{ lanLabel(lan) }}</option>
             </select>
-            <div class="header-right">
-              <div class="status">
-                Connection: <pre class="d-inline">{{ status }}</pre><br />
-                State: <pre class="d-inline">{{ state }}</pre>
-              </div>
-              <div class="volume">
-                <input class="slider" type="range" name="volume" ref="volume" step="1" id="volume" min="0" max="100" v-model="volume" v-on:change="volumeChange" />
-                <label for="volume">Volume</label>
-              </div>
+            <div class="mode-buttons">
+              <button type="button" :class="{ active: mode === 'lan' }" :aria-pressed="mode === 'lan'" :disabled="!lanActive" :title="lanActive ? '' : 'No LAN right now'" @click="showLan">Active LAN</button>
+              <button type="button" :class="{ active: mode === 'all' }" :aria-pressed="mode === 'all'" :aria-busy="loadingAll" @click="showAll">
+                All stats<span v-if="loadingAll" class="loading" aria-hidden="true"></span>
+              </button>
             </div>
           </nav>
 
@@ -339,12 +335,12 @@ export default {
 .status {
   font-family: monospace;
   font-size: .8rem;
-  line-height: 1.3;
+  line-height: 1.5;
   color: rgb(255 255 255 / 40%);
 }
 
-.status pre {
-  color: inherit;
+.status .value {
+  color: rgb(255 255 255 / 70%);
 }
 
 .modes {
@@ -358,14 +354,8 @@ export default {
 
 .mode-buttons {
   display: flex;
-  gap: .5rem;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
   justify-content: flex-end;
-  gap: 1.5rem;
+  gap: .5rem;
 }
 
 .modes button {
@@ -530,45 +520,41 @@ body {
 }
 
 .volume {
-  width: 200px;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin: 0;
 }
 
-.volume label {
-  float: right;
-}
-
+/* Slim slider that fits on a line of status text */
 .slider {
   appearance: none;
-  width: 100%;
-  height: 10px;
-  border-radius: 5px;
-  background: #d3d3d3;
+  width: 110px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 30%);
   outline: none;
-  opacity: 0.7;
-  -webkit-transition: .2s;
-  transition: opacity .2s;
-}
-
-.slider:hover {
-  opacity: 1;
+  cursor: pointer;
 }
 
 .slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
   appearance: none;
-  width: 25px;
-  height: 25px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
   background: #04AA6D;
-  cursor: pointer;
 }
 
 .slider::-moz-range-thumb {
-  -webkit-appearance: none;
-  width: 25px;
-  height: 25px;
+  width: 11px;
+  height: 11px;
+  border: none;
   border-radius: 50%;
   background: #04AA6D;
-  cursor: pointer;
+}
+
+.slider:focus-visible {
+  outline: 2px solid #00abff;
+  outline-offset: 4px;
 }
 </style>
