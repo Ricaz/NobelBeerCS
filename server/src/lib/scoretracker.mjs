@@ -2,8 +2,24 @@ import * as path from 'node:path'
 import * as fs from 'node:fs'
 import { EventEmitter } from 'node:events'
 import * as log from './utility.mjs'
+import { balanceTeams } from './balance.mjs'
 
 const SIPS_PER_BEER = 20
+
+// Shorter games (aborted starts, restarts, tests) are left out of stats and ratings
+const MIN_ROUNDS = 8
+const MIN_ACTIVE_PLAYERS = 4
+
+// Balancing: teams may differ this much in average rating, and every rating gets
+// this many extra kills and deaths, which pulls players with few games toward 1.0
+const BALANCE_TOLERANCE = 0.03
+const RATING_PRIOR = 20
+
+function isRealGame(game) {
+	const rounds = Math.max(0, ...game.scores.map((p) => p.rounds || 0))
+	const active = game.scores.filter((p) => p.kills || p.deaths).length
+	return rounds >= MIN_ROUNDS && active >= MIN_ACTIVE_PLAYERS
+}
 
 class Player {
 	constructor(args) {
@@ -97,44 +113,43 @@ export default class Tracker extends EventEmitter {
 		return { today: todayStats, lan: lanStats }
 	}
 
-	autoBalance(numGames = 0) {
-		let scores = this.getStats(numGames)
-		let response = []
+	// Kills / deaths over the player's own last `numGames` real games (all if 0)
+	getRating(id, numGames = 0) {
+		let kills = 0, deaths = 0, games = 0
+		for (let i = this.history.length - 1; i >= 0 && (!numGames || games < numGames); i--) {
+			const game = this.history[i].game
+			const player = game.scores.find((p) => p.id === id)
+			if (!player || !(player.kills || player.deaths) || !isRealGame(game))
+				continue
 
-		if (! this.board.getScores().length)
+			kills += player.kills
+			deaths += player.deaths
+			games++
+		}
+
+		return (kills + RATING_PRIOR) / (deaths + RATING_PRIOR)
+	}
+
+	// Returns new teams for all active players: [ { steamid, team: 'CT' | 'T' } ]
+	autoBalance(numGames = 50) {
+		const players = this.board.players.filter((p) => p.active && (p.team === 'CT' || p.team === 'TERRORIST'))
+		if (players.length < 2)
 			return false
 
-		// Only use players currently active
-		scores = scores.filter((p) => {
-			let found = this.board.getPlayer(p.id)
-			if (! found)
-				return false
+		const ratings = players.map((p) => this.getRating(p.id, numGames))
+		const current = players.map((p) => p.team === 'CT' ? 1 : 0)
+		const { teams, imbalance, candidates } = balanceTeams(ratings, { tolerance: BALANCE_TOLERANCE, currentTeams: current })
 
-			console.log(`"${found.name}"  Active? ${found.active}. Team? ${found.team}`)
-			return !!(found && found.active && (found.team === 'CT' || found.team === 'TERRORIST'));
-		}).sort((a, b) => b.kd - a.kd)
+		// Which of the two teams plays CT is random too
+		const ctTeam = Math.random() < 0.5 ? 0 : 1
+		const response = players.map((p, i) => ({ steamid: p.id, team: teams[i] === ctTeam ? 'CT' : 'T' }))
 
-		let newTeams = { ct: [], t: [] }
-		scores.forEach((player, i) => {
-			if (i % 2 === 0) {
-				newTeams.ct.push(player)
-				response.push({ steamid: player.id, team: 'CT' })
-			} else {
-				newTeams.t.push(player)
-				response.push({ steamid: player.id, team: 'T' })
-			}
-		})
-
-		// Just logging
-		log.score(`Balancing teams..`)
-		log.score(`Counter-Terrorists:`)
-		newTeams.ct.forEach((p) => {
-			log.score(`${p.kd}  ${p.name}`)
-		})
-		log.score(`Terrorists:`)
-		newTeams.t.forEach((p) => {
-			log.score(`${p.kd}  ${p.name}`)
-		})
+		log.score(`Balancing ${players.length} players (last ${numGames || 'all'} games each): picked 1 of ${candidates} splits, ${(imbalance * 100).toFixed(1)}% imbalance`)
+		for (const side of [ 'CT', 'T' ]) {
+			const members = players.map((p, i) => ({ p, rating: ratings[i] })).filter((_, i) => response[i].team === side)
+			const avg = members.reduce((a, m) => a + m.rating, 0) / members.length
+			log.score(`${side} (avg ${avg.toFixed(2)}): ${members.sort((a, b) => b.rating - a.rating).map((m) => `${m.p.name} ${m.rating.toFixed(2)}`).join(', ')}`)
+		}
 
 		return response
 	}
@@ -172,10 +187,9 @@ export default class Tracker extends EventEmitter {
 	// Adds together the latest `numGames` scoreboards (all if 0).
 	// Also calculates K/D for each player.
 	getStats(numGames = 0, sortBy = 'sips') {
-		// Skip games with <2 players
 		const games = (numGames > 0 ? this.history.slice(-numGames) : this.history)
 			.map((entry) => entry.game)
-			.filter((game) => game.scores.length >= 2)
+			.filter(isRealGame)
 
 		log.score(`getStats() using ${games.length} games`)
 

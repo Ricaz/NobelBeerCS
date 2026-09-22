@@ -66,8 +66,10 @@ All the commands are toggleable.
   * In the next round, everyone gets an M249 with infinite ammo and a continuous supply of HE grenades
   * You cannot stop firing the gun
   * Kinda glitchy, especially if people try to circumvent the safeguards against using other weapons 
-* Autobalance (`nobel_balance`, experimental)
-  * Uses scores calculated (K/D) by the webserver to balance the teams
+* Autobalance (`nobel_balance <games>`, runs automatically with `nobel_start`)
+  * Rates each player by kills/deaths over their own last `<games>` games (50 by default)
+  * Picks a random split among the ones where the teams' average ratings are within 3%,
+    so teams vary between maps, and randomizes which team plays CT
   * Happens immediately when run, ie. people will switch teams in a live game (and survive)
 * Plays a sound in the browser for various events, like:
   * Round start
