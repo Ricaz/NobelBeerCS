@@ -44,7 +44,8 @@ enum (+= 100)
     TASK_MONEY_CHECK,
     TASK_FLASH_PROTECTION,
     TASK_MODE_ANNOUNCE,
-    TASK_BALANCE_POLL
+    TASK_BALANCE_POLL,
+    TASK_BALANCE_TIMEOUT
 }
 
 enum ModState
@@ -218,14 +219,11 @@ public plugin_init()
 
     new configdir[128]
     get_configsdir(configdir, charsmax(configdir))
-    log_amx("Reading config: %s/nobel.cfg", configdir)
     server_cmd("exec %s/nobel.cfg", configdir)
     server_exec()
-    log_amx("Web server: %s:%d", g_serverHost, g_serverPort)
 
     get_mapname(g_mapName, charsmax(g_mapName))
     detect_map_type()
-    log_amx("Map type: %s", g_mapType)
 
     g_msgScreenFade = get_user_msgid("ScreenFade")
     g_pcvarPausable = get_cvar_pointer("pausable")
@@ -236,13 +234,12 @@ public plugin_init()
     g_vault = nvault_open(VAULT_NAME)
     if (g_vault == INVALID_HANDLE)
         log_amx("Failed to open vault: %s", VAULT_NAME)
-    else if (nvault_get(g_vault, VAULT_KEY_MAPEND) == 1) {
-        log_amx("Starting timer for notifying pause end")
+    else if (nvault_get(g_vault, VAULT_KEY_MAPEND) == 1)
         set_task(MAPEND_PAUSE_TIME, "task_mapend_pause_end", TASK_MAPEND_PAUSE)
-    }
 
     send_event_always("mapchange", g_mapName)
-    log_amx("Nobel Beer CS plugin loaded!")
+    log_amx("Loaded (map type %s, web app %s:%d, %d player overrides, %d bot IDs)",
+        g_mapType, g_serverHost, g_serverPort, TrieGetSize(g_overrides), ArraySize(g_botIds))
 }
 
 public plugin_end()
@@ -277,7 +274,6 @@ load_overrides()
 
     new file = fopen(path, "rt")
     if (!file) {
-        log_amx("No player overrides loaded (%s not found)", path)
         return
     }
 
@@ -294,7 +290,6 @@ load_overrides()
     }
     fclose(file)
 
-    log_amx("Loaded %d player overrides from %s", TrieGetSize(g_overrides), path)
 }
 
 // Looks up a personal sound/chat message for a player in a situation ("tk", "knife").
@@ -331,7 +326,6 @@ load_bot_ids()
     }
     fclose(file)
 
-    log_amx("Loaded %d bot Steam IDs from %s", ArraySize(g_botIds), path)
 }
 
 // Gives a bot the first Steam ID from nobel_bot_ids.ini that no other bot uses
@@ -350,9 +344,31 @@ assign_bot_id(id)
     }
 }
 
+// Logs an admin action: "ALSTRUP (STEAM_0:1:11611559): queued a knife round".
+// id 0 is the server itself: rcon, the server console or a config file.
+log_admin(id, const format[], any:...)
+{
+    new message[192], who[96]
+    vformat(message, charsmax(message), format, 3)
+    if (id) {
+        new authid[MAX_AUTHID_LENGTH]
+        get_user_authid(id, authid, charsmax(authid))
+        formatex(who, charsmax(who), "%n (%s)", id, authid)
+    } else {
+        copy(who, charsmax(who), "server")
+    }
+    log_amx("%s: %s", who, message)
+}
+
+// Appends "NAME -> TEAM" to a list of team moves for a one-line log
+add_move(moves[], len, id, const team[])
+{
+    format(moves, len, "%s%s%n -> %s", moves, moves[0] ? ", " : "", id, team)
+}
+
 set_state(ModState:newState)
 {
-    log_amx("Changing mod state from %s to %s", STATE_NAME[g_state], STATE_NAME[newState])
+    log_amx("Mod state: %s -> %s", STATE_NAME[g_state], STATE_NAME[newState])
     g_state = newState
 }
 
@@ -412,7 +428,6 @@ public client_authorized(id)
     if (!is_counted(id))
         return
 
-    log_amx("CS event: %n joined", id)
     send_player_cmd("playerjoined", id)
 }
 
@@ -424,7 +439,6 @@ public client_disconnected(id)
     remove_task(TASK_ZOOMSLAP + id)
 
     if (is_counted(id)) {
-        log_amx("CS event: %n left", id)
         send_player_cmd("playerleft", id)
     }
 
@@ -442,7 +456,6 @@ public on_team_info()
         return
 
     copy(g_lastTeam[id], charsmax(g_lastTeam[]), team)
-    log_amx("CS event: %n switched to %s", id, team)
     send_player_cmd("playerteam", id, team)
 }
 
@@ -484,7 +497,6 @@ freeze_player(id)
     if (!is_user_alive(id))
         return
 
-    log_amx("Freezing player: %n", id)
     g_frozen[id] = true
     ExecuteHamB(Ham_CS_Player_ResetMaxSpeed, id)
 
@@ -556,7 +568,6 @@ start_new_round()
 
 public on_round_start()
 {
-    log_amx("CS event: round_start")
     send_players()
 
     if (!g_enabled)
@@ -615,7 +626,6 @@ public task_round_ending()
 
 public task_end_flash_protection()
 {
-    log_amx("Technoflash period ended")
     g_flashProtectionActive = false
 }
 
@@ -677,7 +687,6 @@ public task_periodic()
 switch_teams()
 {
     g_teamsSwitched = true
-    log_amx("Flipping teams")
     send_event("teamswitch")
 
     new players[MAX_PLAYERS], num, newVip
@@ -688,12 +697,10 @@ switch_teams()
 
         switch (cs_get_user_team(id)) {
             case CS_TEAM_T: {
-                log_amx("Putting %n on team CT", id)
                 cs_set_user_team(id, CS_TEAM_CT)
                 newVip = id
             }
             case CS_TEAM_CT: {
-                log_amx("Putting %n on team T", id)
                 cs_set_user_team(id, CS_TEAM_T)
             }
         }
@@ -702,10 +709,13 @@ switch_teams()
             engclient_cmd(id, "drop", "weapon_c4")
     }
 
-    if (equal(g_mapType, "as") && newVip) {
-        log_amx("Setting VIP status on %n", newVip)
+    if (equal(g_mapType, "as") && newVip)
         cs_set_user_vip(newVip, 1, 1, 1)
-    }
+
+    if (equal(g_mapType, "as") && newVip)
+        log_amx("Half-time: swapped the teams of %d players, %n is VIP", num, newVip)
+    else
+        log_amx("Half-time: swapped the teams of %d players", num)
 }
 
 public on_intermission()
@@ -723,12 +733,9 @@ public task_mapend_pause_end()
     if (g_vault != INVALID_HANDLE)
         nvault_set(g_vault, VAULT_KEY_MAPEND, "0")
 
-    if (g_state == STATE_STOPPED) {
-        log_amx("mapend_pause_end timer elapsed while mod not started, sending event")
+    // Only if the next game hasn't started already
+    if (g_state == STATE_STOPPED)
         send_event_always("mapend_pause_end")
-    } else {
-        log_amx("mapend_pause_end timer elapsed, but mod already started, so skipping event")
-    }
 }
 
 // ----------------------------------------------------------------------------
@@ -886,8 +893,6 @@ public on_death()
         teamkill = !suicide && cs_get_user_team(killer) == cs_get_user_team(victim)
     }
 
-    log_amx("Death event occurred. Killer: %s, Victim: %s", killerName, victimName)
-
     if (suicide) {
         if (g_mode == MODE_BONG) {
             send_event("bong", victimId, victimId, "", weapon)
@@ -897,7 +902,7 @@ public on_death()
             client_print(0, print_chat, "Hehe, %s begik selvmord :>", victimName)
         }
         if (g_setting[SET_PAUSE])
-            pause_game()
+            pause_game("suicide by %s", victimName)
     }
     else if (teamkill) {
         if (g_mode == MODE_BONG) {
@@ -910,13 +915,13 @@ public on_death()
             send_event("tk", killerId, victimId, sound, weapon, headshot)
             client_print(0, print_chat, "%s", chat)
         }
-        pause_or_freeze(killer)
+        pause_or_freeze(killer, "teamkill by %s", killerName)
     }
     else if (g_mode == MODE_KNIFE && !knifed && !grenade) {
         // In knife rounds we do NOT accept to be killed by a gun!
         send_event("kniferound", killerId, victimId, "", weapon, headshot)
         client_print(0, print_chat, "Bottoms up, %s!", killerName)
-        pause_or_freeze(killer)
+        pause_or_freeze(killer, "gun kill in the knife round by %s", killerName)
     }
     else if (knifed && g_mode != MODE_KNIFE) {
         new sound[32] = "knife", chat[128]
@@ -926,7 +931,7 @@ public on_death()
         client_print(0, print_chat, "%s", chat)
 
         if (g_setting[SET_KNIFEPAUSE])
-            pause_or_freeze(killer)
+            pause_or_freeze(killer, "knife kill by %s", killerName)
     }
     else if (grenade) {
         send_event("grenade", killerId, victimId, "", weapon)
@@ -977,10 +982,12 @@ check_last_alive()
     }
 }
 
-pause_or_freeze(killer)
+pause_or_freeze(killer, const reason[], any:...)
 {
     if (g_setting[SET_PAUSE]) {
-        pause_game()
+        new why[96]
+        vformat(why, charsmax(why), reason, 3)
+        pause_game("%s", why)
     } else {
         freeze_player(killer)
         // Ensure that the server does not show the pause images
@@ -1005,17 +1012,22 @@ create_pause_menu()
 
 public pause_menu_handler(id, menu, item)
 {
-    if (item == 9)
+    if (item == 9 && g_paused) {
+        log_admin(id, "unpaused the game")
         unpause_game()
+    }
     return PLUGIN_HANDLED
 }
 
-pause_game()
+// reason: e.g. "teamkill by %s"
+pause_game(const reason[], any:...)
 {
     if (g_paused)
         return
 
-    log_amx("Pausing game")
+    new why[96]
+    vformat(why, charsmax(why), reason, 2)
+    log_amx("Pausing the game: %s", why)
     toggle_pause()
 }
 
@@ -1026,7 +1038,6 @@ unpause_game()
 
     client_print(0, print_chat, "Go go go!")
     send_event("unpause")
-    log_amx("Unpausing game")
     toggle_pause()
 }
 
@@ -1058,7 +1069,7 @@ public client_command(id)
         return PLUGIN_CONTINUE
 
     g_paused = !g_paused
-    log_amx("Changed pause state to: %s", g_paused ? "true" : "false")
+    log_amx(g_paused ? "Game paused" : "Game resumed")
     // The web app's killfeed stops its timers while paused
     send_event(g_paused ? "paused" : "resumed")
 
@@ -1211,13 +1222,14 @@ request_balance(games)
 {
     new JSON:args = json_init_object()
     json_object_set_number(args, "games", games)
-    log_amx("Sending balance request for %d games", games)
     send_command("balance", args)
     json_free(args)
 
     // The response arrives on the same UDP socket
     remove_task(TASK_BALANCE_POLL)
+    remove_task(TASK_BALANCE_TIMEOUT)
     set_task(0.1, "task_balance_poll", TASK_BALANCE_POLL, _, _, "a", 30)
+    set_task(3.5, "task_balance_timeout", TASK_BALANCE_TIMEOUT)
 }
 
 public task_balance_poll()
@@ -1230,24 +1242,29 @@ public task_balance_poll()
         return
 
     remove_task(TASK_BALANCE_POLL)
-    log_amx("Received balance response: %s", buf)
+    remove_task(TASK_BALANCE_TIMEOUT)
     apply_balance(buf)
+}
+
+public task_balance_timeout()
+{
+    log_amx("Balance: no reply from the web app at %s:%d", g_serverHost, g_serverPort)
 }
 
 apply_balance(const data[])
 {
     new JSON:response = json_parse(data)
     if (response == Invalid_JSON) {
-        log_amx("Could not parse balance response")
+        log_amx("Balance: could not read the web app's reply")
         return
     }
     if (!json_is_array(response)) {
-        log_amx("Balance response is not an array")
+        log_amx("Balance: unexpected reply from the web app")
         json_free(response)
         return
     }
 
-    new playerId[MAX_AUTHID_LENGTH], team[8]
+    new playerId[MAX_AUTHID_LENGTH], team[8], moves[512]
     for (new i, count = json_array_get_count(response); i < count; i++) {
         new JSON:entry = json_array_get_value(response, i)
         json_object_get_string(entry, "steamid", playerId, charsmax(playerId))
@@ -1260,12 +1277,13 @@ apply_balance(const data[])
 
         new CsTeams:newTeam = equali(team, "CT") ? CS_TEAM_CT : CS_TEAM_T
         if (cs_get_user_team(id) != newTeam) {
-            log_amx("Moving %n to %s", id, team)
+            add_move(moves, charsmax(moves), id, team)
             cs_set_user_team(id, newTeam)
         }
     }
 
     json_free(response)
+    log_amx("Balance: %s", moves[0] ? moves : "teams unchanged")
 }
 
 shuffle_players()
@@ -1281,11 +1299,13 @@ shuffle_players()
         players[j] = tmp
     }
 
+    new moves[512]
     for (new i; i < num; i++) {
         new CsTeams:team = i % 2 ? CS_TEAM_T : CS_TEAM_CT
-        log_amx("Putting %n on team %s", players[i], team == CS_TEAM_T ? "T" : "CT")
+        add_move(moves, charsmax(moves), players[i], team == CS_TEAM_T ? "T" : "CT")
         cs_set_user_team(players[i], team)
     }
+    log_amx("Shuffle: %s", moves)
 }
 
 // ----------------------------------------------------------------------------
@@ -1331,7 +1351,6 @@ send_raw(const data[])
 
     static buf[4096]
     new len = formatex(buf, charsmax(buf), "%s\n", data)
-    log_amx("Sending JSON: %s", data)
     socket_send(g_socket, buf, len)
 }
 
@@ -1439,6 +1458,7 @@ public cmd_toggle_setting(id, level, cid)
             continue
 
         g_setting[s] = read_argc() > 1 ? read_argv_int(1) != 0 : !g_setting[s]
+        log_admin(id, "turned %s %s", SETTING_NAME[s], g_setting[s] ? "on" : "off")
 
         if (SETTING_ANNOUNCE[s])
             client_print(0, print_chat, "Nobel Beer CS %s %s", SETTING_NAME[s], g_setting[s] ? "enabled" : "disabled")
@@ -1466,10 +1486,12 @@ public cmd_round_mode(id, level, cid)
     if (g_mode == MODE_NORMAL && g_nextMode == MODE_NORMAL) {
         g_nextMode = mode
         g_endModeAfterRound = false
+        log_admin(id, "queued a %s for next round", MODE_NAME[mode])
         announce_mode_queued(mode)
         client_print(0, print_chat, "Nobel %s enabled!", MODE_NAME[mode])
     } else if (g_mode == mode || g_nextMode == mode) {
         g_endModeAfterRound = true
+        log_admin(id, "made this the last %s", MODE_NAME[mode])
         announce_mode_last(mode)
     } else {
         console_print(id, "Another special round is already active.")
@@ -1479,8 +1501,10 @@ public cmd_round_mode(id, level, cid)
 
 public cmd_nobel_end_mode_now(id, level, cid)
 {
-    if (cmd_access(id, level, cid, 1) && g_enabled)
+    if (cmd_access(id, level, cid, 1) && g_enabled && (g_mode != MODE_NORMAL || g_nextMode != MODE_NORMAL)) {
+        log_admin(id, "ended the %s now", MODE_NAME[g_mode != MODE_NORMAL ? g_mode : g_nextMode])
         end_round_mode()
+    }
     return PLUGIN_HANDLED
 }
 
@@ -1530,6 +1554,7 @@ public cmd_nobel_theme(id, level, cid)
 
     new theme[32]
     read_argv(1, theme, charsmax(theme))
+    log_admin(id, "changed the sound theme to %s", theme)
     client_print(0, print_chat, "Nobel sound theme changed to: %s!", theme)
     send_event("theme", theme)
     return PLUGIN_HANDLED
@@ -1540,14 +1565,18 @@ public cmd_nobel_balance(id, level, cid)
     if (!cmd_access(id, level, cid, 2))
         return PLUGIN_HANDLED
 
-    request_balance(read_argv_int(1))
+    new games = read_argv_int(1)
+    log_admin(id, "balanced the teams (last %d games per player)", games)
+    request_balance(games)
     return PLUGIN_HANDLED
 }
 
 public cmd_nobel_shuffle(id, level, cid)
 {
-    if (cmd_access(id, level, cid, 1) && g_enabled)
+    if (cmd_access(id, level, cid, 1) && g_enabled) {
+        log_admin(id, "shuffled the teams")
         shuffle_players()
+    }
     return PLUGIN_HANDLED
 }
 
@@ -1560,22 +1589,28 @@ public cmd_nobel_sendplayers(id, level, cid)
 
 public cmd_badum(id, level, cid)
 {
-    if (cmd_access(id, level, cid, 1) && g_setting[SET_BADUM])
+    if (cmd_access(id, level, cid, 1) && g_setting[SET_BADUM]) {
+        log_admin(id, "played badum")
         send_event("badum")
+    }
     return PLUGIN_HANDLED
 }
 
 public cmd_ready(id, level, cid)
 {
-    if (cmd_access(id, level, cid, 1) && !g_enabled)
+    if (cmd_access(id, level, cid, 1) && !g_enabled) {
+        log_admin(id, "played ready")
         send_event_always("ready")
+    }
     return PLUGIN_HANDLED
 }
 
 public cmd_shutup(id, level, cid)
 {
-    if (cmd_access(id, level, cid, 1))
+    if (cmd_access(id, level, cid, 1)) {
+        log_admin(id, "played shutup")
         send_event_always("shutup")
+    }
     return PLUGIN_HANDLED
 }
 
@@ -1584,13 +1619,13 @@ public cmd_nobel_start(id, level, cid)
     if (!cmd_access(id, level, cid, 1) || g_state != STATE_STOPPED)
         return PLUGIN_HANDLED
 
+    log_admin(id, "started Nobel Beer CS (nobel_map_%s.cfg)", g_mapType)
     g_roundCount = 0
     set_state(STATE_STARTING)
     send_players()
     request_balance(50)
 
     // server.cfg first, so the map type config can override it (e.g. mp_roundtime)
-    log_amx("Executing: nobel_map_%s.cfg", g_mapType)
     server_cmd("exec server.cfg")
     server_cmd("exec nobel_map_%s.cfg", g_mapType)
     server_cmd("exec mr15.cfg")
@@ -1604,6 +1639,7 @@ public cmd_nobel_serverstart(id, level, cid)
     if (!cmd_access(id, level, cid, 1) || g_enabled)
         return PLUGIN_HANDLED
 
+    log_admin(id, "went live")
     g_enabled = true
     g_setting[SET_PAUSE] = true
     g_setting[SET_KNIFEPAUSE] = true
@@ -1621,6 +1657,7 @@ public cmd_nobel_stop(id, level, cid)
     if (!cmd_access(id, level, cid, 1) || g_state != STATE_STARTED)
         return PLUGIN_HANDLED
 
+    log_admin(id, "stopped Nobel Beer CS")
     end_round_mode()
     g_enabled = false
     remove_task(TASK_PERIODIC)

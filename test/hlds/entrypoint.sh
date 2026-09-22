@@ -21,5 +21,8 @@ done
 [ -f $CSTRIKE/mr15.cfg ] || echo "nobel_serverstart" > $CSTRIKE/mr15.cfg
 [ -f $CSTRIKE/stop.cfg ] || touch $CSTRIKE/stop.cfg
 
+# Keep the console readable: no bot chat or radio messages
+sed -i 's/^yb_chat .*/yb_chat "0"/; s/^yb_radio_mode .*/yb_radio_mode "0"/' $CSTRIKE/addons/yapb/conf/yapb.cfg
+
 cd /home/steam/hlds
 exec ./hlds_run -game cstrike -port 27015 +sv_lan 1 +maxplayers 16 +map "${MAP:-de_dust2}" "$@"
