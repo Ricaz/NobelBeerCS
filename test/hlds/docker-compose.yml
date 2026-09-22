@@ -13,3 +13,4 @@ services:
       MAP: de_dust2
     volumes:
       - ../../cstrike:/nobel:ro
+      - ./nobel_bot_ids.ini:/test/nobel_bot_ids.ini:ro

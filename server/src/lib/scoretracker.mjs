@@ -29,7 +29,7 @@ export default class Tracker extends EventEmitter {
 		this.endTime
 		this.running = false
 		this.board
-		this.historyDir = path.resolve('history')
+		this.historyDir = path.resolve(args?.historyDir || 'history')
 		this.writeTimer = null
 
 		// Ensure history dir exists

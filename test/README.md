@@ -13,6 +13,15 @@ node src/tools/fake-mod.mjs             # in another: [host] [port] [delay-ms]
 
 Open https://localhost:27016 to watch the scoreboard and hear the sounds.
 
+## Keep test games out of the real history
+
+The web app saves every game to `server/history/`, which is also where the real stats
+live. When testing, point it at a copy instead, in `server/.env`:
+
+```sh
+HISTORY_DIR="/tmp/beercs-history"     # e.g. cp -r server/history /tmp/beercs-history
+```
+
 ## Full setup with a local CS 1.6 server
 
 `test/hlds` contains a Docker image with HLDS, Metamod-P, AMX Mod X 1.10 and
@@ -41,8 +50,10 @@ bots can't (freezing, the pause menu). Connections from 127.0.0.1 get admin righ
 
 Things to know:
 
-- Bots get fake IDs like `BOT_<name>`, since they all share the Steam ID `BOT`.
-  Without `nobel_bots 1`, bots are ignored just like in a real game.
+- Without `nobel_bots 1`, bots are ignored just like in a real game.
+- Bots take Steam IDs from `test/hlds/nobel_bot_ids.ini` in join order: real players
+  from the history, so the scoreboard and `nobel_balance` use real stats. Bots beyond
+  the list get fake IDs like `BOT_<name>`.
 - Pausing (`amx_pause`) needs a real player on the server.
 - `sv_restart` resets the map timer, so the half-time team switch happens
   `mp_timelimit / 2` minutes after the last restart. Set `mp_timelimit 1` to test it quickly.

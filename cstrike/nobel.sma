@@ -20,6 +20,7 @@
 #define VAULT_NAME "nobel"
 #define VAULT_KEY_MAPEND "mapend"
 #define OVERRIDES_FILE "nobel_players.ini"
+#define BOT_IDS_FILE "nobel_bot_ids.ini"
 
 #define FREEZE_TIME 5.0
 #define FROZEN_SPEED 0.1
@@ -138,6 +139,8 @@ new g_vault = INVALID_HANDLE
 new g_socket
 new Float:g_socketRetryAt
 new Trie:g_overrides
+new Array:g_botIds
+new g_botIdIndex[MAX_PLAYERS + 1] = { -1, ... }
 
 // Cvars
 new g_serverHost[64]
@@ -228,6 +231,7 @@ public plugin_init()
     g_pcvarPausable = get_cvar_pointer("pausable")
     create_pause_menu()
     load_overrides()
+    load_bot_ids()
 
     g_vault = nvault_open(VAULT_NAME)
     if (g_vault == INVALID_HANDLE)
@@ -248,6 +252,7 @@ public plugin_end()
     if (g_socket)
         socket_close(g_socket)
     TrieDestroy(g_overrides)
+    ArrayDestroy(g_botIds)
 }
 
 detect_map_type()
@@ -305,6 +310,46 @@ get_override(const authid[], const situation[], sound[], soundLen, chat[], chatL
     copy(chat, chatLen, data[OV_CHAT])
 }
 
+// Steam IDs for bots to use instead of "BOT", so testing can use real players' stats
+load_bot_ids()
+{
+    g_botIds = ArrayCreate(MAX_AUTHID_LENGTH)
+
+    new path[PLATFORM_MAX_PATH]
+    get_configsdir(path, charsmax(path))
+    format(path, charsmax(path), "%s/%s", path, BOT_IDS_FILE)
+
+    new file = fopen(path, "rt")
+    if (!file)
+        return
+
+    new line[128], authid[MAX_AUTHID_LENGTH]
+    while (fgets(file, line, charsmax(line))) {
+        strtok2(line, authid, charsmax(authid), line, charsmax(line), ';', TRIM_FULL)
+        if (authid[0])
+            ArrayPushString(g_botIds, authid)
+    }
+    fclose(file)
+
+    log_amx("Loaded %d bot Steam IDs from %s", ArraySize(g_botIds), path)
+}
+
+// Gives a bot the first Steam ID from nobel_bot_ids.ini that no other bot uses
+assign_bot_id(id)
+{
+    for (new i, count = ArraySize(g_botIds); i < count; i++) {
+        new bool:taken
+        for (new other = 1; other <= MAX_PLAYERS; other++) {
+            if (g_botIdIndex[other] == i)
+                taken = true
+        }
+        if (!taken) {
+            g_botIdIndex[id] = i
+            return
+        }
+    }
+}
+
 set_state(ModState:newState)
 {
     log_amx("Changing mod state from %s to %s", STATE_NAME[g_state], STATE_NAME[newState])
@@ -331,10 +376,12 @@ get_game_players(players[MAX_PLAYERS], &num, const extraFlags[] = "", const team
 // Steam ID, or a unique fake one for bots since they all share "BOT"
 get_player_id(id, out[], len)
 {
-    if (is_user_bot(id))
-        formatex(out, len, "BOT_%n", id)
-    else
+    if (!is_user_bot(id))
         get_user_authid(id, out, len)
+    else if (g_botIdIndex[id] != -1)
+        ArrayGetString(g_botIds, g_botIdIndex[id], out, len)
+    else
+        formatex(out, len, "BOT_%n", id)
 }
 
 find_player_by_id(const playerId[])
@@ -359,6 +406,9 @@ public client_putinserver(id)
 // Triggered when client receives STEAMID
 public client_authorized(id)
 {
+    if (is_user_bot(id))
+        assign_bot_id(id)
+
     if (!is_counted(id))
         return
 
@@ -373,11 +423,12 @@ public client_disconnected(id)
     remove_task(TASK_RAMBO + id)
     remove_task(TASK_ZOOMSLAP + id)
 
-    if (!is_counted(id))
-        return
+    if (is_counted(id)) {
+        log_amx("CS event: %n left", id)
+        send_player_cmd("playerleft", id)
+    }
 
-    log_amx("CS event: %n left", id)
-    send_player_cmd("playerleft", id)
+    g_botIdIndex[id] = -1
 }
 
 public on_team_info()

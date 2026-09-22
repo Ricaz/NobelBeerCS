@@ -27,7 +27,7 @@ console.log(`MODE: ${process.env.MODE}`)
 console.log(`NODE_ENV: ${process.env.NODE_ENV}`)
 
 // Initialize tracker and events
-var tracker = new scoretracker()
+var tracker = new scoretracker({ historyDir: process.env.HISTORY_DIR })
 tracker.on('state', (state) => { broadcast({ cmd: 'state', data: state }) })
 tracker.on('stats', (stats) => { broadcast({ cmd: 'stats', data: stats }) })
 tracker.on('game-ended', () => { broadcast({ cmd: 'game-ended' }) })
