@@ -75,11 +75,11 @@ new const SETTING_CMD[Setting][] = {
 }
 new const SETTING_NAME[Setting][] = {
     "pausing",
-    "knife pausing",
+    "knifepausing",
     "badum",
-    "team flash",
+    "teamflash",
     "antizoompistol",
-    "flash protection"
+    "flashprotection"
 }
 new const bool:SETTING_ANNOUNCE[Setting] = { true, true, true, false, true, true }
 new bool:g_setting[Setting] = { false, false, true, false, false, false }
