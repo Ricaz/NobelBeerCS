@@ -890,10 +890,10 @@ public on_death()
 
     if (suicide) {
         if (g_mode == MODE_BONG) {
-            send_event("bong", victimId, victimId)
+            send_event("bong", victimId, victimId, "", weapon)
             client_print(0, print_chat, "%s? drikdrikdrikdrikdrikdrikdrik", victimName)
         } else {
-            send_event("suicide", victimId)
+            send_event("suicide", victimId, "", "", weapon)
             client_print(0, print_chat, "Hehe, %s begik selvmord :>", victimName)
         }
         if (g_setting[SET_PAUSE])
@@ -901,20 +901,20 @@ public on_death()
     }
     else if (teamkill) {
         if (g_mode == MODE_BONG) {
-            send_event("bong", killerId, victimId)
+            send_event("bong", killerId, victimId, "", weapon, headshot)
             client_print(0, print_chat, "%s? drikdrikdrikdrikdrikdrikdrik", killerName)
         } else {
             new sound[32] = "tk", chat[128]
             formatex(chat, charsmax(chat), "Kan du bunde, %s?", killerName)
             get_override(killerId, "tk", sound, charsmax(sound), chat, charsmax(chat))
-            send_event("tk", killerId, victimId, sound)
+            send_event("tk", killerId, victimId, sound, weapon, headshot)
             client_print(0, print_chat, "%s", chat)
         }
         pause_or_freeze(killer)
     }
     else if (g_mode == MODE_KNIFE && !knifed && !grenade) {
         // In knife rounds we do NOT accept to be killed by a gun!
-        send_event("kniferound", killerId)
+        send_event("kniferound", killerId, victimId, "", weapon, headshot)
         client_print(0, print_chat, "Bottoms up, %s!", killerName)
         pause_or_freeze(killer)
     }
@@ -922,20 +922,20 @@ public on_death()
         new sound[32] = "knife", chat[128]
         formatex(chat, charsmax(chat), "%s got KNIFED!", victimName)
         get_override(killerId, "knife", sound, charsmax(sound), chat, charsmax(chat))
-        send_event("knife", killerId, victimId, sound)
+        send_event("knife", killerId, victimId, sound, weapon, headshot)
         client_print(0, print_chat, "%s", chat)
 
         if (g_setting[SET_KNIFEPAUSE])
             pause_or_freeze(killer)
     }
     else if (grenade) {
-        send_event("grenade", killerId, victimId)
+        send_event("grenade", killerId, victimId, "", weapon)
         freeze_player(killer)
     }
     else {
         if (is_worst_player(killer))
             send_event("worstplayer")
-        send_event(headshot ? "headshot" : "kill", killerId, victimId)
+        send_event(headshot ? "headshot" : "kill", killerId, victimId, "", weapon, headshot)
         freeze_player(killer)
         check_last_alive()
     }
@@ -1059,6 +1059,8 @@ public client_command(id)
 
     g_paused = !g_paused
     log_amx("Changed pause state to: %s", g_paused ? "true" : "false")
+    // The web app's killfeed stops its timers while paused
+    send_event(g_paused ? "paused" : "resumed")
 
     if (g_pausableBefore != -1) {
         set_pcvar_num(g_pcvarPausable, g_pausableBefore)
@@ -1387,14 +1389,15 @@ send_players()
     json_free(list)
 }
 
-send_event(const cmd[], const arg1[] = "", const arg2[] = "", const sound[] = "")
+send_event(const cmd[], const arg1[] = "", const arg2[] = "", const sound[] = "", const weapon[] = "", bool:headshot = false)
 {
     if (g_enabled)
-        send_event_always(cmd, arg1, arg2, sound)
+        send_event_always(cmd, arg1, arg2, sound, weapon, headshot)
 }
 
-// `sound` overrides which media folder the web server plays from (defaults to cmd)
-send_event_always(const cmd[], const arg1[] = "", const arg2[] = "", const sound[] = "")
+// `sound` overrides which media folder the web server plays from (defaults to cmd).
+// Kill events also carry the weapon and headshot flag, for the web app's killfeed.
+send_event_always(const cmd[], const arg1[] = "", const arg2[] = "", const sound[] = "", const weapon[] = "", bool:headshot = false)
 {
     new JSON:event = json_init_object()
     json_object_set_string(event, "cmd", cmd)
@@ -1410,6 +1413,10 @@ send_event_always(const cmd[], const arg1[] = "", const arg2[] = "", const sound
 
     if (sound[0] && !equal(sound, cmd))
         json_object_set_string(event, "sound", sound)
+    if (weapon[0])
+        json_object_set_string(event, "weapon", weapon)
+    if (headshot)
+        json_object_set_bool(event, "headshot", true)
 
     send_json(event)
     json_free(event)

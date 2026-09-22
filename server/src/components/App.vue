@@ -2,6 +2,7 @@
 const HEADERS = [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Rounds" ]
 const STATS_HEADERS = [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Maps" ]
 const COOLDOWN_EVENTS = [ 'suicide', 'tk', 'grenade' ]
+const KILL_EVENTS = [ 'kill', 'headshot', 'knife', 'grenade', 'tk', 'suicide', 'kniferound', 'bong' ]
 
 function board(title, headers, scores, show) {
   return { title, headers, scores, show: show && scores.length > 0 }
@@ -32,6 +33,8 @@ export default {
       lans: [],
       selectedLan: '',
       loadingAll: false,
+      // The game is paused (killfeed timers stop)
+      paused: false,
       // Don't slide on page load, only on later switches
       animate: false,
       hasState: false,
@@ -91,6 +94,9 @@ export default {
       if (import.meta.env.DEV)
         console.log('Received socket data: ', data)
 
+      // Every kill goes in the killfeed, also during sound cooldowns
+      this.addToKillFeed(data)
+
       // Handle cooldowns
       if (this.cooldowns.includes(data.cmd))
         return
@@ -130,6 +136,16 @@ export default {
         case "suicide":
         case "bombexploded":
           this.showOverlay(data.cmd, data.args)
+          break
+        case "paused":
+          this.paused = true
+          break
+        case "resumed":
+          this.paused = false
+          break
+        case "firstround":
+          this.paused = false
+          this.$refs.killfeed?.clear()
           break
         case "unpause":
         case "newround":
@@ -197,6 +213,53 @@ export default {
     lanLabel: function (lan) {
       const date = (time) => new Date(time).toLocaleDateString('da-DK', { day: 'numeric', month: 'short' })
       return `${lan.name} · ${date(lan.start)}–${date(lan.end)} · ${lan.games} ${lan.games === 1 ? 'map' : 'maps'}`
+    },
+
+    addToKillFeed: function (data) {
+      if (!KILL_EVENTS.includes(data.cmd) || !this.$refs.killfeed)
+        return
+
+      const [ first, second ] = data.args ?? []
+      const player = (id) => {
+        const p = this.scores.find((p) => p.id == id)
+        return { name: p?.name ?? '???', team: p?.team }
+      }
+      // Older plugin versions don't send the weapon
+      const weapon = data.weapon ?? (data.cmd === 'knife' ? 'knife' : data.cmd === 'grenade' ? 'grenade' : null)
+
+      if (data.cmd === 'suicide' || first === second)
+        this.$refs.killfeed.add({ victim: player(second ?? first), weapon, suicide: true })
+      else if (second)
+        this.$refs.killfeed.add({
+          killer: player(first),
+          victim: player(second),
+          weapon,
+          headshot: data.headshot || data.cmd === 'headshot',
+          teamkill: data.cmd === 'tk',
+        })
+    },
+
+    // Game start: the LAN stats fly out to the sides and collapse, so the
+    // fresh scoreboard below moves up. Game end: the reverse.
+    animateLanStats: function (el, done, entering) {
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+        return done()
+
+      const timing = { duration: 700, easing: 'cubic-bezier(.4, 0, .2, 1)', fill: 'both' }
+      const frames = (shown, hidden) => entering ? [ hidden, shown ] : [ shown, hidden ]
+      el.style.overflow = 'hidden'
+
+      const collapse = el.animate(frames({ height: `${el.offsetHeight}px` }, { height: '0px' }), timing)
+      el.querySelector('.highlights')?.animate(frames({ transform: 'none', opacity: 1 }, { transform: 'translateY(-40px)', opacity: 0 }), timing)
+      el.querySelector('.scores-today')?.animate(frames({ transform: 'none' }, { transform: 'translateX(-100%)' }), timing)
+      el.querySelector('.scores-lan')?.animate(frames({ transform: 'none' }, { transform: 'translateX(100%)' }), timing)
+
+      collapse.onfinish = () => {
+        // Let the block size itself again after entering
+        el.getAnimations({ subtree: true }).forEach((a) => a.cancel())
+        el.style.overflow = ''
+        done()
+      }
     },
 
     playerName: function (id) {
@@ -292,17 +355,22 @@ export default {
           <div class="pages">
             <div class="track" :class="{ 'show-all': mode === 'all', animate }">
               <section class="page" :inert="mode !== 'lan'">
-                <Highlights v-if="state === 'ended'" :highlights="stats.lanHighlights" />
-                <div class="row w-100">
-                  <div v-if="todayScores.show" class="scores-today pb-5 col-6">
-                    <Scoreboard :scoreboard="todayScores.scores" :title="todayScores.title" :headers="todayScores.headers" />
+                <Transition :css="false" @enter="(el, done) => animateLanStats(el, done, true)" @leave="(el, done) => animateLanStats(el, done, false)">
+                  <div v-if="state === 'ended'" class="lan-stats">
+                    <Highlights :highlights="stats.lanHighlights" />
+                    <div class="row w-100">
+                      <div v-if="todayScores.show" class="scores-today pb-5 col-6">
+                        <Scoreboard :scoreboard="todayScores.scores" :title="todayScores.title" :headers="todayScores.headers" />
+                      </div>
+                      <div v-if="lanScores.show" class="scores-lan pb-5 col-6">
+                        <Scoreboard :scoreboard="lanScores.scores" :title="lanScores.title" :headers="lanScores.headers" />
+                      </div>
+                    </div>
                   </div>
-                  <div v-if="lanScores.show" class="scores-lan pb-5 col-6">
-                    <Scoreboard :scoreboard="lanScores.scores" :title="lanScores.title" :headers="lanScores.headers" />
-                  </div>
-                </div>
+                </Transition>
 
                 <div v-if="activeScores.show" class="scores-active pb-5">
+                  <KillFeed v-if="state === 'live'" ref="killfeed" :paused="paused" />
                   <Scoreboard :scoreboard="activeScores.scores" :title="activeScores.title" :headers="activeScores.headers" />
                 </div>
               </section>
@@ -415,6 +483,10 @@ export default {
 .modes select.concealed {
   opacity: 0;
   visibility: hidden;
+}
+
+.scores-active {
+  position: relative;
 }
 
 /* Two pages side by side in a track twice the page width */

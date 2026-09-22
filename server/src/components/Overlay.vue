@@ -8,7 +8,8 @@ const video = ref(null)
 const playVideo = function(path) {
   video.value.classList.remove('hidden')
   video.value.src = path
-  video.value.play()
+  // Rejected when the next video interrupts this one, which is fine
+  video.value.play().catch(() => {})
   console.log(`Overlay video: "${path}"`)
 }
 
