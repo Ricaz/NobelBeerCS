@@ -1,7 +1,10 @@
 <script>
 const HEADERS = [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Rounds" ]
 const STATS_HEADERS = [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Maps" ]
-const COOLDOWN_EVENTS = [ 'suicide', 'tk', 'grenade' ]
+const COOLDOWN_EVENTS = [ 'grenade' ]
+// Teamkills and suicides that happen close together (without a pause in between)
+// are summed up on one overlay
+const SHAME_WINDOW = 3000
 const KILL_EVENTS = [ 'kill', 'headshot', 'knife', 'grenade', 'tk', 'suicide', 'kniferound', 'bong' ]
 
 function board(title, headers, scores, show) {
@@ -23,7 +26,10 @@ export default {
       scores: [],
       audioElements: [],
       cooldowns: [],
-      overlay: { text: '', show: false },
+      overlay: { text: '', show: false, summary: false },
+      // Teamkills and suicides since the game last resumed: { type: 'tk', killer, victim } | { type: 'suicide', player }
+      shame: [],
+      shameAt: 0,
       socket: null,
       // 'lan': the active LAN (live scoreboard or LAN stats), 'all': all-time stats
       mode: 'all',
@@ -97,6 +103,11 @@ export default {
       // Every kill goes in the killfeed, also during sound cooldowns
       this.addToKillFeed(data)
 
+      // A second teamkill/suicide in the same pause only updates the overlay text,
+      // it doesn't restart the video or sound
+      if ((data.cmd === 'tk' || data.cmd === 'suicide') && this.addToShame(data))
+        return
+
       // Handle cooldowns
       if (this.cooldowns.includes(data.cmd))
         return
@@ -132,19 +143,21 @@ export default {
         case "state":
           this.changeState(data.data)
           break
-        case "tk":
-        case "suicide":
         case "bombexploded":
-          this.showOverlay(data.cmd, data.args)
+          this.overlay.text = 'Allahu Akbar!'
+          this.overlay.summary = false
+          this.overlay.show = true
           break
         case "paused":
           this.paused = true
           break
         case "resumed":
           this.paused = false
+          this.shame = []
           break
         case "firstround":
           this.paused = false
+          this.shame = []
           this.$refs.killfeed?.clear()
           break
         case "unpause":
@@ -152,6 +165,7 @@ export default {
         case "round":
           this.stopSound()
           this.overlay.show = false
+          this.shame = []
           break
       }
 
@@ -266,19 +280,54 @@ export default {
       return this.scores.find((p) => p.id == id)?.name ?? '???'
     },
 
-    showOverlay: function(cmd, args = []) {
-      // Generate text to display on overlay
-      if (cmd === "tk") {
-        this.overlay.text = `${this.playerName(args[0])}\nteamkilled\n${this.playerName(args[1])}`
-      } else if (cmd === 'suicide') {
-        this.overlay.text = `${this.playerName(args[0])} committed suicide!`
-      } else if (cmd === 'bombexploded') {
-        this.overlay.text = 'Allahu Akbar!'
-      } else {
-        this.overlay.text = ''
+    // Adds a teamkill/suicide to the summary and shows it. Returns true if it
+    // continues a summary that is already on screen.
+    addToShame: function (data) {
+      const [ first, second ] = data.args ?? []
+      const now = Date.now()
+      // Without a pause (pausing off, or an older plugin) only group events close together
+      if (!this.paused && now - this.shameAt > SHAME_WINDOW)
+        this.shame = []
+
+      const continuing = this.shame.length > 0
+      this.shame.push(data.cmd === 'tk' ? { type: 'tk', killer: first, victim: second } : { type: 'suicide', player: first })
+      this.shameAt = now
+
+      this.overlay.text = this.shameText()
+      this.overlay.summary = this.shame.length > 1
+      this.overlay.show = true
+      return continuing
+    },
+
+    // "ALSTRUP\nteamkilled\nCARO" for one event, otherwise a header and a line per killer:
+    // "3 teamkills + 1 suicide\nALSTRUP teamkilled CARO, emiL & Bob\nBob committed suicide"
+    shameText: function () {
+      const name = (id) => this.playerName(id)
+      if (this.shame.length === 1) {
+        const e = this.shame[0]
+        return e.type === 'tk' ? `${name(e.killer)}\nteamkilled\n${name(e.victim)}` : `${name(e.player)} committed suicide!`
       }
 
-      this.overlay.show = true
+      const victims = new Map() // killer => victims, in order of first teamkill
+      const lines = []
+      for (const e of this.shame) {
+        if (e.type === 'suicide') {
+          lines.push(`${name(e.player)} committed suicide`)
+        } else if (victims.has(e.killer)) {
+          victims.get(e.killer).push(name(e.victim))
+        } else {
+          victims.set(e.killer, [ name(e.victim) ])
+          lines.push(e.killer)
+        }
+      }
+
+      const list = (names) => names.length > 1 ? `${names.slice(0, -1).join(', ')} & ${names.at(-1)}` : names[0]
+      const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
+      const teamkills = this.shame.filter((e) => e.type === 'tk').length
+      const suicides = this.shame.length - teamkills
+      const header = [ teamkills && plural(teamkills, 'teamkill'), suicides && plural(suicides, 'suicide') ].filter(Boolean).join(' + ')
+
+      return [ header, ...lines.map((line) => victims.has(line) ? `${name(line)} teamkilled ${list(victims.get(line))}` : line) ].join('\n')
     },
 
     playMedia: function (file) {

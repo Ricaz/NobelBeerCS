@@ -31,7 +31,7 @@ defineExpose({ playVideo, stopVideo, setVolume })
 <template>
 <div class="container-fluid overlay" v-show="overlay.show">
   <div class="overlay-body">
-    <span class="overlay-text">{{ overlay.text }}</span>
+    <span class="overlay-text" :class="{ summary: overlay.summary }">{{ overlay.text }}</span>
     <video ref="video" class="hidden" id="video">Video not available</video>
   </div>
 </div>
@@ -47,6 +47,17 @@ defineExpose({ playVideo, stopVideo, setVolume })
   text-align: center;
   font-size: 60pt;
   text-shadow: 3px -1px 7px rgba(0,0,0,0.5);
+}
+
+/* Several teamkills/suicides: header plus a line per killer */
+.overlay-text.summary {
+  font-size: 40pt;
+  line-height: 1.3;
+  white-space: pre-line;
+}
+
+.overlay-text.summary::first-line {
+  font-size: 52pt;
 }
 .overlay {
   position: absolute;
