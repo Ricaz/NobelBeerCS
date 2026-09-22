@@ -224,8 +224,8 @@ export default {
         const p = this.scores.find((p) => p.id == id)
         return { name: p?.name ?? '???', team: p?.team }
       }
-      // Older plugin versions don't send the weapon
-      const weapon = data.weapon ?? (data.cmd === 'knife' ? 'knife' : data.cmd === 'grenade' ? 'grenade' : null)
+      // Older plugin versions don't send the weapon: guess from the event, or show a generic gun
+      const weapon = data.weapon ?? { knife: 'knife', grenade: 'grenade', suicide: null }[data.cmd] ?? 'unknown'
 
       if (data.cmd === 'suicide' || first === second)
         this.$refs.killfeed.add({ victim: player(second ?? first), weapon, suicide: true })
@@ -370,7 +370,6 @@ export default {
                 </Transition>
 
                 <div v-if="activeScores.show" class="scores-active pb-5">
-                  <KillFeed v-if="state === 'live'" ref="killfeed" :paused="paused" />
                   <Scoreboard :scoreboard="activeScores.scores" :title="activeScores.title" :headers="activeScores.headers" />
                 </div>
               </section>
@@ -390,6 +389,7 @@ export default {
     </div>
   </div>
   <Overlay ref="overlay" :overlay="overlay" />
+  <KillFeed ref="killfeed" :paused="paused" />
 </template>
 
 <style>
@@ -483,10 +483,6 @@ export default {
 .modes select.concealed {
   opacity: 0;
   visibility: hidden;
-}
-
-.scores-active {
-  position: relative;
 }
 
 /* Two pages side by side in a track twice the page width */

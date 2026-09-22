@@ -6,7 +6,6 @@ import { ref, onMounted, onUnmounted } from 'vue'
 const props = defineProps({ paused: Boolean })
 
 const LIFETIME = 6000 // like hud_deathnotice_time in CS
-const MAX_ENTRIES = 5
 const TICK = 100
 
 const entries = ref([])
@@ -16,8 +15,6 @@ let timer
 // entry: { killer: { name, team }, victim: { name, team }, weapon, headshot, teamkill, suicide }
 function add(entry) {
   entries.value.push({ ...entry, id: nextId++, remaining: LIFETIME })
-  if (entries.value.length > MAX_ENTRIES)
-    entries.value.shift()
 }
 
 function clear() {
@@ -46,6 +43,7 @@ const WEAPON_CLASS = {
   m249: 'mg',
   knife: 'knife',
   grenade: 'grenade', hegrenade: 'grenade',
+  unknown: 'rifle',
 }
 
 // Side-view silhouettes drawn on a 64x20 grid, facing right
@@ -97,10 +95,11 @@ function weaponIcon(weapon) {
 
 <style scoped>
 .killfeed {
-  position: absolute;
-  top: 0;
-  right: 0;
-  z-index: 10;
+  /* Bottom right of the page, above the video overlay. Newest entry at the bottom. */
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 10000;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
