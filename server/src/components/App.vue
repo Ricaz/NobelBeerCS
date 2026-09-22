@@ -32,8 +32,9 @@ export default {
       lans: [],
       selectedLan: '',
       loadingAll: false,
-      // Only slide between pages after the first click, not on page load
+      // Don't slide on page load, only on later switches
       animate: false,
+      hasState: false,
     }
   },
 
@@ -146,6 +147,11 @@ export default {
     changeState: function (state) {
       const previous = this.state
       this.state = state
+
+      // Slide on automatic switches too, except for the first state on page load
+      if (this.hasState)
+        this.animate = true
+      this.hasState = true
 
       // No LAN: only all-time stats. A game starting always gets the screen.
       if (state === 'idle')
@@ -263,25 +269,29 @@ export default {
     <div class="row">
       <div class="col-12 pt-4">
         <div class="container-fluid">
-          <div class="status">
-            Connection: <pre class="d-inline">{{ status }}</pre><br />
-            State: <pre class="d-inline">{{ state }}</pre>
-          </div>
-          <div class="volume">
-            <input class="slider" type="range" name="volume" ref="volume" step="1" id="volume" min="0" max="100" v-model="volume" v-on:change="volumeChange" />
-            <label for="volume">Volume</label>
-          </div>
-
+          <!-- Buttons left, LAN dropdown centered, status and volume on the right -->
           <nav class="modes" aria-label="Stats">
-            <button type="button" :class="{ active: mode === 'lan' }" :aria-pressed="mode === 'lan'" :disabled="!lanActive" :title="lanActive ? '' : 'No LAN right now'" @click="showLan">Active LAN</button>
-            <button type="button" :class="{ active: mode === 'all' }" :aria-pressed="mode === 'all'" :aria-busy="loadingAll" @click="showAll">
-              All stats<span v-if="loadingAll" class="loading" aria-hidden="true"></span>
-            </button>
-            <!-- Only on All stats; hidden (not removed) so the buttons don't move -->
+            <div class="mode-buttons">
+              <button type="button" :class="{ active: mode === 'lan' }" :aria-pressed="mode === 'lan'" :disabled="!lanActive" :title="lanActive ? '' : 'No LAN right now'" @click="showLan">Active LAN</button>
+              <button type="button" :class="{ active: mode === 'all' }" :aria-pressed="mode === 'all'" :aria-busy="loadingAll" @click="showAll">
+                All stats<span v-if="loadingAll" class="loading" aria-hidden="true"></span>
+              </button>
+            </div>
+            <!-- Only shown on All stats -->
             <select id="lan-select" class="form-select" :class="{ concealed: mode !== 'all' }" aria-label="Show stats for" :value="selectedLan" :disabled="loadingAll" @change="selectLan">
               <option value="">All time</option>
               <option v-for="lan in lans" :key="lan.id" :value="lan.id">{{ lanLabel(lan) }}</option>
             </select>
+            <div class="header-right">
+              <div class="status">
+                Connection: <pre class="d-inline">{{ status }}</pre><br />
+                State: <pre class="d-inline">{{ state }}</pre>
+              </div>
+              <div class="volume">
+                <input class="slider" type="range" name="volume" ref="volume" step="1" id="volume" min="0" max="100" v-model="volume" v-on:change="volumeChange" />
+                <label for="volume">Volume</label>
+              </div>
+            </div>
           </nav>
 
           <!-- Both pages sit side by side; the track slides to show one of them -->
@@ -328,17 +338,34 @@ export default {
 
 .status {
   font-family: monospace;
-  position: absolute;
-  left: 1.5rem;
-  top: 1.5rem;
+  font-size: .8rem;
+  line-height: 1.3;
+  color: rgb(255 255 255 / 40%);
+}
+
+.status pre {
+  color: inherit;
 }
 
 .modes {
+  display: grid;
+  /* Equal outer columns keep the dropdown centered */
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.mode-buttons {
+  display: flex;
+  gap: .5rem;
+}
+
+.header-right {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: .5rem;
-  margin-bottom: 1.5rem;
+  justify-content: flex-end;
+  gap: 1.5rem;
 }
 
 .modes button {
@@ -392,7 +419,6 @@ export default {
 .modes select {
   width: auto;
   min-width: 22rem;
-  margin-left: .5rem;
   font-size: 1.1rem;
   border-radius: 999px;
   transition: opacity .3s, visibility .3s;
@@ -504,11 +530,7 @@ body {
 }
 
 .volume {
-  display: inline-block;
-  z-index: 10000;
   width: 200px;
-  position: fixed;
-  right: 20pt;
 }
 
 .volume label {
