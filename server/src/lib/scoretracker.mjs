@@ -6,8 +6,9 @@ import { balanceTeams } from './balance.mjs'
 
 const SIPS_PER_BEER = 20
 
-// Shorter games (aborted starts, restarts, tests) are left out of stats and ratings
-const MIN_ROUNDS = 8
+// Shorter games (aborted starts, restarts, tests) are left out of stats and ratings.
+// MIN_GAME_ROUNDS in .env can lower it for testing.
+const MIN_ROUNDS = Number(process.env.MIN_GAME_ROUNDS || 8)
 const MIN_ACTIVE_PLAYERS = 4
 
 // Balancing: teams may differ this much in average rating, and every rating gets

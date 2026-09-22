@@ -47,9 +47,7 @@ export default {
       return this.state === 'live' || this.state === 'ended'
     },
     allScores() {
-      const lan = this.lans.find((l) => l.id === this.selectedLan)
-      const title = lan ? lan.name : this.lanActive ? "All time" : "No LAN active. All time:"
-      return board(title, [ "Name (last seen)", ...STATS_HEADERS.slice(1) ], neutral(this.allStats), true)
+      return board(null, [ "Name (last seen)", ...STATS_HEADERS.slice(1) ], neutral(this.allStats), true)
     },
     todayScores() {
       return board("Stats for today", STATS_HEADERS, neutral(this.stats.today), this.state === 'ended')
@@ -312,7 +310,7 @@ export default {
               <section class="page" :inert="mode !== 'all'">
                 <Highlights :highlights="allHighlights" />
                 <div v-if="allScores.show" class="scores-total pb-5">
-                  <Scoreboard :scoreboard="allScores.scores" :title="allScores.title" :headers="allScores.headers" />
+                  <Scoreboard :scoreboard="allScores.scores" :headers="allScores.headers" />
                 </div>
               </section>
             </div>
@@ -349,7 +347,7 @@ export default {
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 1rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
 }
 
 .mode-buttons {

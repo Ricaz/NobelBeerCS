@@ -20,7 +20,11 @@ live. When testing, point it at a copy instead, in `server/.env`:
 
 ```sh
 HISTORY_DIR="/tmp/beercs-history"     # e.g. cp -r server/history /tmp/beercs-history
+MIN_GAME_ROUNDS=1                     # count short test games as real games
 ```
+
+Games under 8 rounds normally don't count, so without `MIN_GAME_ROUNDS` a short test game
+doesn't start a LAN: after it ends, the page shows all stats instead of the LAN page.
 
 ## Full setup with a local CS 1.6 server
 

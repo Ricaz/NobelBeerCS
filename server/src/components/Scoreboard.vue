@@ -3,7 +3,7 @@ defineProps([ 'scoreboard', 'title', 'headers' ])
 </script>
 
 <template>
-	<h1 class="text-center">{{ title }}</h1>
+	<h1 v-if="title" class="text-center">{{ title }}</h1>
 	<table class="table table-fluid">
 		<thead>
 			<tr>
