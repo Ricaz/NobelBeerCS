@@ -8,5 +8,8 @@ Accepts TCP connection from AMX Mod X mod, keeps track of scores, and hosts a we
 1. Install dependencies with `npm i`
 2. Configure `.env` from `.env-example`.
 3. Copy certificates to `tls/cert.pem` and `tls/key.pem` (or link provided self-signed localhost certs)
-4. Build using `npm run build`
-5. Run using `npm run start` (or execute `src/server.mjs`)
+4. Optional: extract the real killfeed icons from your own Counter-Strike install with
+   `node src/tools/extract-killfeed-icons.mjs [path to cstrike]` (defaults to the Linux Steam path).
+   They are Valve's files, so they are git-ignored; without them the killfeed uses simple silhouettes.
+5. Build using `npm run build`
+6. Run using `npm run start` (or execute `src/server.mjs`)

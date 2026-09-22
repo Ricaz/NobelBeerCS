@@ -5,12 +5,22 @@ import { ref, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps({ paused: Boolean })
 
-const LIFETIME = 6000 // like hud_deathnotice_time in CS
+const LIFETIME = 7000
 const TICK = 100
+// The game's icons are 16px tall; shown at this scale
+const SPRITE_SCALE = 1.5
 
 const entries = ref([])
 let nextId = 0
 let timer
+
+// The real icons, extracted from the game by src/tools/extract-killfeed-icons.mjs.
+// Without them, our own SVG silhouettes are used.
+const sprites = ref({})
+fetch('assets/killfeed/icons.json')
+  .then((res) => res.ok ? res.json() : {})
+  .then((manifest) => { sprites.value = manifest })
+  .catch(() => {})
 
 // entry: { killer: { name, team }, victim: { name, team }, weapon, headshot, teamkill, suicide }
 function add(entry) {
@@ -73,8 +83,22 @@ function icon(name) {
   return { d: ICONS[name], viewBox: `${x} 0 ${width} 20` }
 }
 
-function weaponIcon(weapon) {
-  return icon(WEAPON_CLASS[weapon])
+// Game icon by hud.txt name (without "d_"), or an SVG silhouette
+function iconFor(spriteName, svgName, label) {
+  const sprite = sprites.value[spriteName]
+  if (sprite)
+    return { label, url: `assets/killfeed/${spriteName}.png`, width: sprite.width * SPRITE_SCALE, height: sprite.height * SPRITE_SCALE }
+  const svg = icon(svgName)
+  return svg && { label, ...svg }
+}
+
+// Icons between the names, in CS order: [skull] [weapon] [headshot]
+function iconsFor(entry) {
+  return [
+    entry.suicide && iconFor('skull', 'suicide', 'suicide'),
+    entry.weapon && iconFor(entry.weapon, WEAPON_CLASS[entry.weapon], entry.weapon),
+    entry.headshot && iconFor('headshot', 'headshot', 'headshot'),
+  ].filter(Boolean)
 }
 </script>
 
@@ -83,10 +107,11 @@ function weaponIcon(weapon) {
     <TransitionGroup name="feed">
       <div v-for="e in entries" :key="e.id" class="entry" :class="{ teamkill: e.teamkill }">
         <span v-if="!e.suicide" class="name" :class="e.killer.team">{{ e.killer.name }}</span>
-        <svg v-if="e.suicide" class="icon" :viewBox="icon('suicide').viewBox" role="img" aria-label="suicide"><path :d="icon('suicide').d" /></svg>
-        <svg v-if="weaponIcon(e.weapon)" class="icon" :viewBox="weaponIcon(e.weapon).viewBox" role="img" :aria-label="e.weapon"><path :d="weaponIcon(e.weapon).d" /></svg>
-        <span v-else-if="e.weapon && !e.suicide" class="weapon-name">{{ e.weapon }}</span>
-        <svg v-if="e.headshot" class="icon" :viewBox="icon('headshot').viewBox" role="img" aria-label="headshot"><path :d="icon('headshot').d" /></svg>
+        <template v-for="i in iconsFor(e)" :key="i.label">
+          <span v-if="i.url" class="sprite" role="img" :aria-label="i.label"
+            :style="{ width: `${i.width}px`, height: `${i.height}px`, maskImage: `url(${i.url})`, WebkitMaskImage: `url(${i.url})` }"></span>
+          <svg v-else class="icon" :viewBox="i.viewBox" role="img" :aria-label="i.label"><path :d="i.d" /></svg>
+        </template>
         <span class="name" :class="e.victim.team">{{ e.victim.name }}</span>
       </div>
     </TransitionGroup>
@@ -95,10 +120,11 @@ function weaponIcon(weapon) {
 
 <style scoped>
 .killfeed {
-  /* Bottom right of the page, above the video overlay. Newest entry at the bottom. */
+  /* Top right of the page below the menu, above the video overlay. Newest entry at the bottom. */
+  --killfeed-icon-color: rgb(255 160 0);
   position: fixed;
+  top: 5.5rem;
   right: 1.5rem;
-  bottom: 1.5rem;
   z-index: 10000;
   display: flex;
   flex-direction: column;
@@ -130,14 +156,18 @@ function weaponIcon(weapon) {
 .icon {
   height: 1.2rem;
   width: auto;
-  fill: #f2f2f2;
+  fill: var(--killfeed-icon-color);
   flex: none;
 }
 
-.weapon-name {
-  font-size: .8rem;
-  color: rgb(255 255 255 / 70%);
-  text-transform: uppercase;
+/* The game's icons are white masks, tinted like the game's HUD */
+.sprite {
+  flex: none;
+  background-color: var(--killfeed-icon-color);
+  mask-size: 100% 100%;
+  -webkit-mask-size: 100% 100%;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
 }
 
 .feed-enter-active,
