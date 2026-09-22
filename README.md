@@ -106,13 +106,28 @@ The sounds are highly recommended as they make the experience much more fun.
 Requires `amxmodx` versions `1.10` or above.
 
 You compile `nobel.sma` with the `amxxpc` compiler included with AMXModX and put the
-resulting binary in `addons/amxmodx/plugins/`.
+resulting binary in `addons/amxmodx/plugins/`. Copy `nobel.cfg` and `nobel_players.ini`
+to `addons/amxmodx/configs/`.
 
 You can start the mod using `nobel_start`.
+
+Settings like `nobel_pause` toggle when run without an argument, or can be set
+explicitly with `nobel_pause 0`/`nobel_pause 1`. Run `nobel` to see all settings.
+
+### Personal sounds
+
+`nobel_players.ini` maps Steam IDs to personal sounds and chat messages for
+teamkills and knife kills. The sound is the name of a folder in the web app's
+media directory.
 
 ### Web application
 The separate web server is optional, but highly recommended. You will need to configure 
 `nobel_server_host` and `nobel_server_port` inside `amxmodx/nobel.cfg` for it to connect.
 
-It opens a socket connection to our NodeJS server (in `/server`). 
-This connection is used to send events about all kills and round starts.
+The mod sends events about all kills and round starts to our NodeJS server (in `/server`)
+as JSON over UDP, so a slow or unavailable web server never lags the game. Make sure
+the UDP port is open if the web server runs on another machine.
+
+## Testing
+
+See [test/README.md](test/) for running the web app and a local CS server with bots in Docker.
