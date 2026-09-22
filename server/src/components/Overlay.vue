@@ -1,22 +1,26 @@
 <script setup>
+import { ref } from 'vue'
+
 defineProps([ 'overlay' ])
 
+const video = ref(null)
+
 const playVideo = function(path) {
-  this.$refs.video.classList.remove('hidden')
-  this.$refs.video.src = path
-  this.$refs.video.play()
+  video.value.classList.remove('hidden')
+  video.value.src = path
+  video.value.play()
   console.log(`Overlay video: "${path}"`)
 }
 
 const stopVideo = function() {
-  this.$refs.video.classList.add('hidden')
-  this.$refs.video.src = ''
-  this.$refs.video.load()
+  video.value.classList.add('hidden')
+  video.value.src = ''
+  video.value.load()
   console.log(`Stopped video.`)
 }
 
 const setVolume = function(volume) {
-  this.$refs.video.volume = volume
+  video.value.volume = volume
 }
 
 defineExpose({ playVideo, stopVideo, setVolume })

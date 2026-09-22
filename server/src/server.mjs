@@ -5,6 +5,7 @@
 import 'dotenv/config'
 
 // Load system/npm modules
+import * as dgram from 'node:dgram'
 import * as net from 'node:net'
 import * as path from 'node:path'
 import * as fs from 'node:fs'
@@ -19,8 +20,8 @@ var settings   = {
 	theme: 'default'
 }
 
-const mediaPath = 'dist/assets/media/'
-const themes		= loadThemes()
+const mediaPath = 'dist/assets/media'
+const media     = loadMedia()
 
 console.log(`MODE: ${process.env.MODE}`)
 console.log(`NODE_ENV: ${process.env.NODE_ENV}`)
@@ -31,71 +32,107 @@ tracker.on('state', (state) => { broadcast({ cmd: 'state', data: state }) })
 tracker.on('stats', (stats) => { broadcast({ cmd: 'stats', data: stats }) })
 tracker.on('game-ended', () => { broadcast({ cmd: 'game-ended' }) })
 
-// Create TCP socket server and set up event handling on it
+// The mod sends newline-terminated JSON messages over UDP. The replies to
+// requests (like 'balance') are sent back to the address they came from.
+const udp = dgram.createSocket('udp4')
+
+udp.on('message', (data, rinfo) => {
+	handleData(data.toString('utf8'), (reply) => {
+		udp.send(JSON.stringify(reply), rinfo.port, rinfo.address)
+	})
+})
+
+udp.on('error', (err) => {
+	log.tcp(`UDP error: ${err}`)
+})
+
+udp.bind(process.env.PORT_TCP, () => {
+	log.tcp('UDP socket listening on ' + process.env.PORT_TCP)
+})
+
+// Same protocol over TCP, used by tools/tcptester.js
 var tcp = net.createServer((sock) => {
+	let buffer = ''
 	sock.setEncoding('utf8')
 
-	sock.on('connect', (sock) => {
-		log.tcp('Mod connected!')
-	})
-
 	sock.on('data', (data) => {
-		log.tcp(data)
-		let message = JSON.parse(data)
+		buffer += data
+		let end = buffer.lastIndexOf('\n')
+		if (end === -1)
+			return
 
-		if (message.cmd == 'getfullstats') {
-			console.log(`opts: ${message.args}`)
-			let stats = tracker.getStatsInterval()
-			console.log('getfullstats: ', stats)
-			if (stats)
-				broadcast(stats)
-		}
-
-		if (message.cmd == 'getstats') {
-			console.log(`opts: ${message.args}`)
-			let stats = tracker.getStats(...message.args)
-			console.log('getstats: ', stats)
-			if (stats)
-				sock.write(JSON.stringify(stats))
-		}
-
-		if (message.cmd == 'balance') {
-			let balanced = tracker.autoBalance(message.args.games)
-			console.log('balanced: ', balanced)
-			if (balanced)
-				sock.write(JSON.stringify(balanced))
-		}
-
-		// Scoreboard
-		tracker.handleEvent(message)
-		if (tracker.running || true) {
-			var fullState = { cmd: 'scoreboard', args: [ tracker.getScoreboard() ] }
-			broadcast(fullState)
-
-			// Handle media
-			if (message.cmd === 'theme' && themes.includes(message.args[0])) {
-				log.tcp(`Switched theme from '${settings.theme}' to '${message.args[0]}'.`)
-				settings.theme = message.args[0]
-			}
-
-			if (getMedia(message.cmd)) {
-				message.media = getMedia(message.cmd)
-			}
-
-			broadcast(message)
-		}
+		handleData(buffer.slice(0, end), (reply) => { sock.write(JSON.stringify(reply) + '\n') })
+		buffer = buffer.slice(end + 1)
 	})
 
 	sock.on('error', (err) => {
 		log.tcp(err)
 	})
-
-	sock.pipe(sock)
 })
 
 tcp.listen(process.env.PORT_TCP, () => {
-	log.tcp('Socket listening on ' + process.env.PORT_TCP)
+	log.tcp('TCP socket listening on ' + process.env.PORT_TCP)
 })
+
+function handleData(data, reply) {
+	for (const line of data.split('\n')) {
+		if (!line.trim())
+			continue
+
+		log.tcp(line)
+		let message
+		try {
+			message = JSON.parse(line)
+		} catch (e) {
+			log.tcp(`Invalid JSON from mod: ${e.message}`)
+			continue
+		}
+
+		try {
+			handleMessage(message, reply)
+		} catch (e) {
+			log.tcp(`Error handling '${message.cmd}': ${e.stack}`)
+		}
+	}
+}
+
+function handleMessage(message, reply) {
+	if (message.cmd == 'getfullstats') {
+		let stats = tracker.getStatsInterval()
+		if (stats)
+			broadcast(stats)
+	}
+
+	if (message.cmd == 'getstats') {
+		let stats = tracker.getStats(...message.args)
+		if (stats)
+			reply(stats)
+	}
+
+	if (message.cmd == 'balance') {
+		let balanced = tracker.autoBalance(message.args.games)
+		console.log('balanced: ', balanced)
+		if (balanced)
+			reply(balanced)
+	}
+
+	// Scoreboard
+	tracker.handleEvent(message)
+	broadcast({ cmd: 'scoreboard', args: [ tracker.getScoreboard() ] })
+
+	// Handle media
+	if (message.cmd === 'theme' && media[message.args[0]]) {
+		log.tcp(`Switched theme from '${settings.theme}' to '${message.args[0]}'.`)
+		settings.theme = message.args[0]
+	}
+
+	// 'sound' lets the mod pick a personal sound for an event, e.g. 'jeppeknife' for 'knife'
+	let file = getMedia(message.sound) || getMedia(message.cmd)
+	if (file)
+		message.media = file
+
+	broadcast(message)
+}
 
 webserver.listen(process.env.PORT_HTTP, (err) => {
 	if (err)
@@ -111,10 +148,6 @@ const ws = new WebSocketServer({
 
 ws.on('listening', () => {
 	log.ws(`Socket listening on ${process.env.PORT_HTTP}`)
-})
-
-ws.on('upgrade', (req, sock, head) => {
-	log.ws(`Upgrade event: `, { req, sock, head })
 })
 
 ws.on('connection', (conn, req) => {
@@ -155,63 +188,43 @@ ws.on('connection', (conn, req) => {
 	})
 })
 
-function getAllFiles(dirPath, arrayOfFiles) {
-	var files = fs.readdirSync(dirPath)
-	var arrayOfFiles = arrayOfFiles || []
+// Builds an index of all media files: { theme: { event: [ 'assets/media/theme/event/file' ] } }
+function loadMedia() {
+	let index = {}
+	for (const theme of fs.readdirSync(mediaPath, { withFileTypes: true })) {
+		if (!theme.isDirectory())
+			continue
 
-	files.forEach(function(file) {
-		if (fs.statSync(dirPath + "/" + file).isDirectory())
-			arrayOfFiles = getAllFiles(dirPath + "/" + file, arrayOfFiles)
-		else
-			arrayOfFiles.push(path.join(path.resolve(), dirPath, "/", file))
-	})
+		index[theme.name] = {}
+		for (const event of fs.readdirSync(path.join(mediaPath, theme.name), { withFileTypes: true })) {
+			if (!event.isDirectory())
+				continue
 
-	return arrayOfFiles
+			index[theme.name][event.name] = fs.readdirSync(path.join(mediaPath, theme.name, event.name), { withFileTypes: true })
+				.filter((file) => file.isFile())
+				.map((file) => `assets/media/${theme.name}/${event.name}/${file.name}`)
+		}
+	}
+
+	log.tcp(`Loaded media for themes: ${Object.keys(index).join(', ')}`)
+	return index
 }
 
 function getMediaList() {
-	var dir = `${mediaPath}/${settings.theme}`
-	return getAllFiles(dir).map((a) => {
-		return a.replace(/.*(assets.*)/, '$1')
-	})
+	return Object.values(media[settings.theme] ?? {}).flat()
 }
 
-// Checks if media file exists for event.
+// Picks a random media file for the event.
 // If using a theme, falls back to default in case of missing file.
 function getMedia(event) {
-	let media = []
-	try {
-		var dir = `${mediaPath}/${settings.theme}/${event}`
-		if (! fs.existsSync(dir)) {
-			dir = `${mediaPath}/default/${event}` 
-			if (! fs.existsSync(dir))
-				return false
-		}
-
-		media = fs.readdirSync(dir)
-		let random = media[Math.floor(Math.random() * media.length)]
-
-		if (dir.includes('default'))
-			return `assets/media/default/${event}/${random}`
-		else
-			return `assets/media/${settings.theme}/${event}/${random}`
-	} catch (e) {
-		log.tcp(`No media found for event '${event}'.\nError: ${e}`)
+	if (!event)
 		return false
-	}
-}
 
-function loadThemes() {
-	let files = fs.readdirSync(mediaPath)
-	let themes = []
-	files.forEach((file) => {
-		let stats = fs.statSync(mediaPath + file)
-		if (stats.isDirectory()) {
-			themes.push(file)
-		}
-	})
+	let files = media[settings.theme]?.[event] ?? media.default?.[event]
+	if (!files?.length)
+		return false
 
-	return themes
+	return files[Math.floor(Math.random() * files.length)]
 }
 
 function broadcast(data) {

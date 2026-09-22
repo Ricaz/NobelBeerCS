@@ -1,82 +1,49 @@
 <script>
+const HEADERS = [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Rounds" ]
+const STATS_HEADERS = [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Maps" ]
+const COOLDOWN_EVENTS = [ 'suicide', 'tk', 'grenade' ]
+
+function board(title, headers, scores, show) {
+  return { title, headers, scores, show: show && scores.length > 0 }
+}
+
+// Stats boards are not team-colored
+function neutral(scores = []) {
+  return scores.map((p) => ({ ...p, team: 'neutral' }))
+}
+
 export default {
   data() {
     return {
       stats: {},
       state: 'idle',
       status: "not connected",
-      theme: "default",
       volume: 30,
       scores: [],
       audioElements: [],
       cooldowns: [],
-      loadedFiles: 0,
-      overlay: { 'event': 'abc', show: false},
-      defaultHeaders: [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Maps/rounds" ]
+      overlay: { text: '', show: false },
     }
   },
 
   computed: {
     activeScores() {
-      let board = {}
-      board.headers = [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Rounds" ]
-      board.scores = this.scores.filter(player => player.active === true)
-      board.title = "Scoreboard"
-      board.show = true
-      board.show = this.state === 'live' || this.state === 'ended'
-      if (! board.scores.length)
-        board.show = false
-      return board
-    },
-    inactiveScores() {
-      let board = {}
-      board.headers = [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Rounds" ]
-      board.scores = this.scores.filter(player => player.active === false)
-      board.title = "Inactive/offline"
-      board.show = true
-      return board
+      const live = this.state === 'live' || this.state === 'ended'
+      return board("Scoreboard", HEADERS, this.scores.filter(p => p.active === true), live)
     },
     totalScores() {
-      let board = {}
-      board.headers = [ "Name (last seen)", "K/D", "Knife K/D", "TK/S", "Øls", "Maps" ]
-      board.scores = this.stats.full ?? []
-      board.scores.forEach((p) => { p.team = 'neutral' })
-      board.title = "No LAN active. All stats:"
-      board.show = this.state === 'idle'
-      if (! board.scores.length)
-        board.show = false
-      return board
+      return board("No LAN active. All stats:", [ "Name (last seen)", ...STATS_HEADERS.slice(1) ], neutral(this.stats.full), this.state === 'idle')
     },
     todayScores() {
-      let board = {}
-      board.headers = [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Maps" ]
-      board.scores = this.stats.today ?? []
-      board.scores.forEach((p) => { p.team = 'neutral' })
-      board.title = "Stats for today"
-      board.show = this.state === 'ended'
-      if (! board.scores.length)
-        board.show = false
-      return board
+      return board("Stats for today", STATS_HEADERS, neutral(this.stats.today), this.state === 'ended')
     },
     lanScores() {
-      let board = {}
-      board.headers = [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Maps" ]
-      board.scores = this.stats.lan ?? []
-      board.scores.forEach((p) => { p.team = 'neutral' })
-      board.title = "Stats for this LAN"
-      board.show = this.state === 'ended'
-      if (! board.scores.length)
-        board.show = false
-      return board
+      return board("Stats for this LAN", STATS_HEADERS, neutral(this.stats.lan), this.state === 'ended')
     }
   },
 
   mounted() {
     this.connectWebSocket()
-  },
-
-  created() {
-    this.audioElements.forEach((audio) => { audio.volume = this.volume / 100 })
   },
 
   methods: {
@@ -104,15 +71,14 @@ export default {
 
     handleMessage: function (msg) {
       let data = JSON.parse(msg.data)
-      if (process.env.NODE_ENV === 'development')
+      if (import.meta.env.DEV)
         console.log('Received socket data: ', data)
 
       // Handle cooldowns
       if (this.cooldowns.includes(data.cmd))
         return
 
-      let cooldownList = ['suicide', 'mikkitk', 'tk', 'grenade']
-      if (cooldownList.includes(data.cmd)) {
+      if (COOLDOWN_EVENTS.includes(data.cmd)) {
         this.cooldowns.push(data.cmd)
         setTimeout(() => {
           this.cooldowns = this.cooldowns.filter(value => value !== data.cmd)
@@ -123,20 +89,16 @@ export default {
         case "scoreboard":
           this.scores = data.args[0].scores
           break
-        case "filelist":
-          this.preloadAudio(data.data)
-          break
         case "stats":
-          this.updateStats(data.data)
+          this.stats = data.data
           break
         case "mapend":
           this.playMedia('assets/media/default/wii/wiishop.mp3')
           break
         case "state":
-          this.changeState(data.data)
+          this.state = data.data
           break
         case "tk":
-        case "mikkitk":
         case "suicide":
         case "bombexploded":
           this.showOverlay(data.cmd, data.args)
@@ -152,46 +114,23 @@ export default {
       this.playMedia(data.media)
     },
 
-    showOverlay: function(cmd, args) {
+    playerName: function (id) {
+      return this.scores.find((p) => p.id == id)?.name ?? '???'
+    },
+
+    showOverlay: function(cmd, args = []) {
       // Generate text to display on overlay
-      if (cmd === "tk" || cmd === "mikkitk") {
-        const killer = this.scores.find((p) => p.id == args[0]).name    
-        const victim = this.scores.find((p) => p.id == args[1]).name    
-        this.overlay.text = `${killer}\nteamkilled\n${victim}`
+      if (cmd === "tk") {
+        this.overlay.text = `${this.playerName(args[0])}\nteamkilled\n${this.playerName(args[1])}`
       } else if (cmd === 'suicide') {
-        const victim = this.scores.find((p) => p.id == args[0]).name    
-        this.overlay.text = `${victim} committed suicide!` 
+        this.overlay.text = `${this.playerName(args[0])} committed suicide!`
       } else if (cmd === 'bombexploded') {
         this.overlay.text = 'Allahu Akbar!'
-      } else if (cmd === 'knife') {
-        const killer = this.scores.find((p) => p.id == args[0]).name    
-        const victim = this.scores.find((p) => p.id == args[1]).name    
-        this.overlay.text = `${victim}\nwas knifed by\n${killer}`
       } else {
         this.overlay.text = ''
       }
 
       this.overlay.show = true
-    },
-
-    updateStats: function (data) {
-      this.stats = data
-      if (this.stats.lan)
-        this.stats.lan = this.stats.lan.sort((a, b) => { return b.sips - a.sips })
-      if (this.stats.today)
-        this.stats.today = this.stats.today.sort((a, b) => { return b.sips - a.sips })
-      if (this.stats.full)
-        this.stats.full = this.stats.full.sort((a, b) => { return b.sips - a.sips })
-
-      if (process.env.NODE_ENV === 'development')
-        console.log('stats', this.stats)
-    },
-
-    changeState: function (state) {
-      this.state = state
-      if (this.state === 'ended') {
-
-      }
     },
 
     playMedia: function (file) {
@@ -212,54 +151,31 @@ export default {
     },
 
     playSound: function (path) {
-      if (!path)
-        return
-
       let audio = new Audio(path)
-      audio.load()
-      audio.addEventListener('canplay', e => {
-        audio.volume = this.volume / 100
-        audio.play()
+      audio.volume = this.volume / 100
+      audio.addEventListener('ended', () => {
+        this.audioElements = this.audioElements.filter((a) => a !== audio)
       })
+      audio.play().catch((e) => console.log(`Could not play "${path}": ${e}`))
       this.audioElements.push(audio)
     },
 
     stopSound: function () {
       this.$refs.overlay.stopVideo()
-
-      // Pause all playing audio elements and remove them from array
-      // Chrome will take care of garbage collection
-      this.audioElements.forEach((audio, i, arr) => {
-          audio.pause()
-      })
-      this.audioElements.forEach((audio, i, arr) => {
-        if (! audio.paused)
-          audio.pause()
-        arr.splice(i, 1)
-      })
+      this.audioElements.forEach((audio) => audio.pause())
+      this.audioElements = []
     },
 
     volumeChange: function () {
       this.$refs.overlay.setVolume(this.volume / 100)
-      this.audioElements.forEach((audio, i, arr) => {
+      this.audioElements.forEach((audio) => {
         audio.volume = this.volume / 100
       })
-    },
-
-    loadAudioFile: function(url) {
-      let audio = new Audio()
-      audio.addEventListener('canplaythrough', function() {
-        loadedFiles++
-      }, false)
-      audio.src = url
-    },
-
-    preloadAudio: function(soundFiles) {
-      // console.log("Loading files:", soundFiles)
     }
   }
 }
 </script>
+
 
 <template>
   <div class="container-fluid" data-bs-theme="dark">

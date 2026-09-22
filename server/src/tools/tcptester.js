@@ -22,7 +22,7 @@ rl.on('line', (input) => {
 
 	var encoded = encode(input[0], input[1], input[2])
 	console.log('sending:', encoded)
-	client.write(JSON.stringify(encoded))
+	client.write(JSON.stringify(encoded) + '\n')
 	rl.prompt()
 })
 

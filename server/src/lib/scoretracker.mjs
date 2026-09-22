@@ -1,5 +1,4 @@
 import * as path from 'node:path'
-import * as glob from 'glob'
 import * as fs from 'node:fs'
 import { EventEmitter } from 'node:events'
 import * as log from './utility.mjs'
@@ -29,6 +28,14 @@ export default class Tracker extends EventEmitter {
 		this.running = false
 		this.board
 		this.historyDir = path.resolve('history')
+		this.writeTimer = null
+
+		// Ensure history dir exists
+		if (! fs.existsSync(this.historyDir))
+			fs.mkdirSync(this.historyDir)
+
+		// All finished (and the current) games, sorted oldest first: [ { time, game } ]
+		this.history = this.loadHistory()
 
 		// Set state 'ended' if less than 30 hours since last game
 		if (Date.now() - this.getLatestGameDate() < (3600*30*1000))
@@ -36,17 +43,28 @@ export default class Tracker extends EventEmitter {
 		else
 			this.state = 'idle'
 
-		// Ensure history dir exists
-		if (! fs.existsSync(this.historyDir))
-			fs.mkdirSync(this.historyDir)
-
 		// Load temp scoreboard if exists
 		this.board = new Scoreboard()
 		this.loadScoreboard()
+	}
 
-		// TODO: debug
-		//this.board.addPlayer('STEAM_0:0:32762533', 'jÆBBØH', 'T')
-		//this.board.addPlayer('STEAM_0:1:11611559', 'ALSTRUP', 'CT')
+	loadHistory() {
+		let history = []
+		for (const file of fs.readdirSync(this.historyDir)) {
+			if (!file.endsWith('.json'))
+				continue
+
+			try {
+				const game = JSON.parse(fs.readFileSync(path.join(this.historyDir, file), 'utf8'))
+				history.push({ time: Number(path.basename(file, '.json')), game })
+			} catch (e) {
+				log.score(`Error loading scoreboard '${file}': ${e}`)
+			}
+		}
+
+		history.sort((a, b) => a.time - b.time)
+		log.score(`Loaded ${history.length} games from history`)
+		return history
 	}
 
 	changeState(newState) {
@@ -86,7 +104,7 @@ export default class Tracker extends EventEmitter {
 
 		// Only use players currently active
 		scores = scores.filter((p) => {
-			let found = this.board.getScores().find(e => e.id === p.id)
+			let found = this.board.getPlayer(p.id)
 			if (! found)
 				return false
 
@@ -109,22 +127,18 @@ export default class Tracker extends EventEmitter {
 		log.score(`Balancing teams..`)
 		log.score(`Counter-Terrorists:`)
 		newTeams.ct.forEach((p) => {
-			log.score(`${p.kd}  ${p.name}`)	
+			log.score(`${p.kd}  ${p.name}`)
 		})
 		log.score(`Terrorists:`)
 		newTeams.t.forEach((p) => {
-			log.score(`${p.kd}  ${p.name}`)	
+			log.score(`${p.kd}  ${p.name}`)
 		})
 
 		return response
 	}
 
 	getLatestGameDate() {
-		const latest = glob.sync(`${this.historyDir}/*.json`)
-			.map((file) => { return path.basename(file, '.json') })
-			.sort((a, b) => { return b - a })
-			[0]
-
+		const latest = this.history.at(-1)?.time
 		log.score(`Latest game: ${latest}`)
 		return latest
 	}
@@ -136,92 +150,56 @@ export default class Tracker extends EventEmitter {
 	//
 	// Defaults to 3 days.
 	getStatsInterval(interval = 3 * 86400 * 1000) {
-		// Gets array of cleaned and desc-sorted filenames without .json extension
-		const files = glob.sync(`${this.historyDir}/*.json`)
-			.map((file) => { return path.basename(file, '.json') })
-			.sort((a, b) => { return b - a })
+		const times = this.history.map((entry) => entry.time).reverse()
 
-        log.score(`found ${files.length} files`)
-
-		const now = Date.now()
-		let delta = now - 2 * interval
+		let delta = Date.now() - 2 * interval
 		let numGames = 0
 		let current
 
-		while ((current = files.shift()) > delta) {
+		while ((current = times.shift()) > delta) {
 			numGames++
 			delta = current - interval
 		}
 
 		if (numGames > 0)
 			return this.getStats(numGames)
-		else 
+		else
 			return []
 	}
 
-	// Loads the latest `numGames` scoreboards and adds them together.
+	// Adds together the latest `numGames` scoreboards (all if 0).
 	// Also calculates K/D for each player.
 	getStats(numGames = 0, sortBy = 'sips') {
-		const files = glob.sync(`${this.historyDir}/*.json`)
-		let loadedFiles = []
+		// Skip games with <2 players
+		const games = (numGames > 0 ? this.history.slice(-numGames) : this.history)
+			.map((entry) => entry.game)
+			.filter((game) => game.scores.length >= 2)
 
-		if (numGames === 0)
-			numGames = files.length
+		log.score(`getStats() using ${games.length} games`)
 
-		// Get files by name (cant sort by ctime anymore as i fucked and deleted everything)
-		const gameFiles = files.sort((a, b) => Number(path.basename(a, '.json')) - Number(path.basename(b, '.json')))
-
-		// Load files until we have requested number of games
-		while (loadedFiles.length < numGames) {
-			let game
-			let file = gameFiles.pop()
-
-			try {
-				game = JSON.parse(fs.readFileSync(file))
-			} catch (e) {
-				log.score(`Error loading scoreboard '${file}': ${e}`)
-				numGames--
-				continue
-			}
-
-			// Skip games with <2 players
-			if (game.scores.length < 2) {
-				numGames--
-				continue
-			}
-
-			loadedFiles.push(game)
-		}
-
-		log.score(`getStats() loading ${loadedFiles.length} files`)
-
-		// Loop over each loaded game, calculate K/D for each player,
+		// Loop over each game, calculate K/D for each player,
 		// ignoring players with 0/0 stats. Should produce the same
 		// format as normal scoreboards, just with K/D added.
-		let scores = []
-		for (const game of loadedFiles) {
+		let scores = new Map()
+		for (const game of games) {
 			for (const score of game.scores) {
-				let player = scores.find((p) => {
-					return p.id === score.id
-				})
-				let exists = player !== undefined
-				let kd = 1
-
 				// Ignore players with 0/0.
 				// If players have 0 deaths, use kills as KD.
 				// If players have 0 kills, KD is 1/deaths
-				if (score.kills === 0 && score.deaths === 0) {
+				if (score.kills === 0 && score.deaths === 0)
 					continue
-				} else if (score.kills > 0 && score.deaths === 0)
+
+				let kd
+				if (score.deaths === 0)
 					kd = score.kills
-				else if (score.kills === 0 && score.deaths > 0)
+				else if (score.kills === 0)
 					kd = 1 / score.deaths
-				else 
+				else
 					kd = score.kills / score.deaths
 
-				// If we didn't already handle this player, create it freshly
-				if (! exists) {
-					player = {
+				let player = scores.get(score.id)
+				if (! player) {
+					scores.set(score.id, {
 						name: score.name,
 						id: score.id,
 						kd: kd,
@@ -233,60 +211,38 @@ export default class Tracker extends EventEmitter {
 						sips: score.sips,
 						knifekills: score.knifekills,
 						knifed: score.knifed
-					}
-
-					scores.push(player)
+					})
+					continue
 				}
 
-				if (exists) {
-					player.kd += kd
-					player.kills += score.kills
-					player.deaths += score.deaths
-					player.teamkills += score.teamkills
-					player.suicides += score.suicides
-					player.knifekills += score.knifekills
-					player.knifed += score.knifed
-					player.sips += score.sips
-					player.games++
-				}
+				player.kd += kd
+				player.kills += score.kills
+				player.deaths += score.deaths
+				player.teamkills += score.teamkills
+				player.suicides += score.suicides
+				player.knifekills += score.knifekills
+				player.knifed += score.knifed
+				player.sips += score.sips
+				player.games++
 			}
 		}
 
-		scores.forEach((player) => {
-			player.kd = player.kd / player.games
-			player.kd = player.kd.toFixed(2)
-		})
-
-		scores.sort((a, b) => b[sortBy] - a[sortBy])
-
-		return scores
+		return [...scores.values()]
+			.map((player) => ({ ...player, kd: (player.kd / player.games).toFixed(2) }))
+			.sort((a, b) => b[sortBy] - a[sortBy])
 	}
 
 	// Loads newest scoreboard. This enables us to recover a live game
 	// in case the web app crashes. Stats during the downtime will be lost.
 	loadScoreboard() {
-		const path = `${this.historyDir}/*.json`
-		const files = glob.sync(path)
-
-		if (files.length > 0) {
-			const newestFile = files.sort()[0]
-			let loaded
-			try {
-				loaded = JSON.parse(fs.readFileSync(newestFile, { encoding: 'utf8' }))
-			} catch (e) {
-				log.score(`Error loading scoreboard: ${e}`)
-				return
-			}
-			if (! loaded)
-				return
-			if (! loaded.endTime && loaded.startTime > Date.now() - (60000 *  70)) {
-				log.score(`Loaded game with start time ${new Date(loaded.startTime).toLocaleTimeString('en-GB')} from ${newestFile}.`)
-				this.startTime = loaded.startTime
-				this.board.players = loaded.scores
-				this.running = true
-				this.changeState('live')
-				return
-			}
+		const loaded = this.history.at(-1)?.game
+		if (loaded && ! loaded.endTime && loaded.startTime > Date.now() - (60000 *  70)) {
+			log.score(`Loaded game with start time ${new Date(loaded.startTime).toLocaleTimeString('en-GB')}.`)
+			this.startTime = loaded.startTime
+			this.board.players = loaded.scores
+			this.running = true
+			this.changeState('live')
+			return
 		}
 
 		log.score('No recent, unfinished game found. Waiting for Øl CS!')
@@ -300,6 +256,27 @@ export default class Tracker extends EventEmitter {
 		}
 	}
 
+	// Updates the current game in history and writes it to disk. Writes are
+	// batched, and go through a temp file so a crash can't leave a broken file.
+	saveScoreboard(immediately = false) {
+		const game = JSON.parse(JSON.stringify(this.getScoreboard()))
+		const entry = this.history.find((e) => e.time === this.startTime)
+		if (entry)
+			entry.game = game
+		else
+			this.history.push({ time: this.startTime, game })
+
+		clearTimeout(this.writeTimer)
+		this.writeTimer = setTimeout(() => {
+			const filename = `${this.historyDir}/${game.startTime}.json`
+			const tmpname = `${filename}.tmp`
+			fs.promises.writeFile(tmpname, JSON.stringify(game))
+				.then(() => fs.promises.rename(tmpname, filename))
+				.then(() => { if (game.endTime) log.score(`Wrote final scoreboard to file ${filename}`) })
+				.catch((err) => log.score(`Failed to write scoreboard to ${filename}: ${err.message}`))
+		}, immediately ? 0 : 1000)
+	}
+
 	handleEvent(message) {
 		const cmd = message.cmd
 		const args = message.args
@@ -307,6 +284,7 @@ export default class Tracker extends EventEmitter {
 		if (cmd === 'firstround') {
 			log.score('Game starting!')
 			this.startTime = Date.now()
+			this.endTime = undefined
 			this.running = true
 			this.changeState('live')
 			this.board.reset()
@@ -323,16 +301,11 @@ export default class Tracker extends EventEmitter {
 
 		else if (cmd === 'playersync') {
 			// Deactivate players not on server
+			const remoteIds = new Set(args.map((p) => p.id))
 			this.board.players.forEach((localPlayer) => {
-                let existsRemote = false;
-                args.forEach((remotePlayer) => {
-					if (localPlayer.id === remotePlayer.id)
-						existsRemote = true
-				})
-
-				if (!existsRemote && localPlayer.active === true)
+				if (!remoteIds.has(localPlayer.id) && localPlayer.active === true)
 					this.board.removePlayer(localPlayer.id)
-			});
+			})
 
 			// Add/update players from server
 			args.forEach((remotePlayer) => {
@@ -350,10 +323,10 @@ export default class Tracker extends EventEmitter {
 		else if (cmd === 'kill' || cmd === 'headshot' || cmd === 'grenade')
 			this.board.handleKill(args[0], args[1])
 
-		else if (cmd.match(/knife$/))
+		else if (cmd === 'knife')
 			this.board.handleKnife(args[0], args[1])
 
-		else if (cmd === 'tk' || cmd === 'mikkitk')
+		else if (cmd === 'tk')
 			this.board.handleTeamkill(args[0], args[1])
 
 		else if (cmd === 'suicide')
@@ -362,32 +335,15 @@ export default class Tracker extends EventEmitter {
 		else if (cmd === 'mapend' || cmd === 'mapchange') {
 			log.score(`Game ended!`)
 			this.endTime = Date.now()
-
-			// Write final scoreboard
-			let filename = `${this.historyDir}/${this.startTime}.json`
-
-			fs.writeFile(filename, JSON.stringify(this.getScoreboard()), { flag: 'w' }, (err) => {
-				if (err)
-					log.score(`Failed to write scoreboard to ${filename}: ${err.message}`)
-				else 
-					log.score(`Wrote final scoreboard to file ${filename}`)
-			})
-
+			this.saveScoreboard(true)
 			this.running = false
 			this.changeState('ended')
-
 			return
 		}
 
-		// Write scoreboard to tmp file (to resume state if started during round)
-		// TODO: For some reason, file is sometimes written twice and I have no idea why..
-		if (this.running) {
-			let filename = `${this.historyDir}/${this.startTime}.json`
-			fs.writeFile(filename, JSON.stringify(this.getScoreboard()), { flag: 'w' }, (err) => {
-				if (err)
-					log.score(`Failed to write scoreboard to ${filename}: ${err.message}`)
-			})
-		}
+		// Save scoreboard (to resume state if the server restarts during a game)
+		if (this.running)
+			this.saveScoreboard()
 	}
 }
 
@@ -404,8 +360,8 @@ class Scoreboard {
 		let player = this.getPlayer(id)
 		if (player) {
 			if (player.name !== name) {
-				player.name = name
 				log.score(`Rename "${player.name}" => "${name}"`)
+				player.name = name
 			}
 			if (player.team !== team) {
 				player.team = team
@@ -444,7 +400,7 @@ class Scoreboard {
 	}
 
 	getScores() {
-		return this.players.sort((a, b) => (a.sips < b.sips) ? 1 : -1)
+		return this.players.sort((a, b) => b.sips - a.sips)
 	}
 
 	handleNewRound() {
@@ -500,30 +456,13 @@ class Scoreboard {
 				killer.sips += 10
 			else if (killer.sips % 20 < 4)
 				killer.sips += 3
-			else 
+			else
 				killer.sips += killer.sips % 20
 			killer.teamkills += 1
 			killer.kills  += 1
 			victim.deaths += 1
 			victim.sips   += 1
 		}
-	}
-
-	handleNewName(id, name) {
-		let player = this.getPlayer(id)
-		if (player) {
-			player.name = name
-		}
-	}
-
-	handlePlayerDisconnect(id) {
-		let player = this.getPlayer(id)
-		if (player)
-			player.active = false
-	}
-
-	handleMapChange(map) {
-		log.score(`Changing map to ${map}`)
 	}
 
 	reset() {
