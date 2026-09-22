@@ -11,6 +11,8 @@ grep -q '^nobel.amxx' $AMXX/configs/plugins.ini || echo "nobel.amxx" >> $AMXX/co
 cp /nobel/nobel_players.ini $AMXX/configs/
 cp /test/nobel_bot_ids.ini $AMXX/configs/
 sed "s/^nobel_server_host.*/nobel_server_host \"${NOBEL_SERVER_HOST:-127.0.0.1}\"/" /nobel/nobel.cfg > $AMXX/configs/nobel.cfg
+# Count bots as players, since they are the only other players here
+echo "nobel_bots 1" >> $AMXX/configs/nobel.cfg
 # All other configs (server.cfg, mr15.cfg, nobel_map_*.cfg, ...) go in cstrike/
 for cfg in /nobel/*.cfg; do
     [ "$(basename "$cfg")" = nobel.cfg ] || cp "$cfg" $CSTRIKE/

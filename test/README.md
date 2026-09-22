@@ -35,7 +35,6 @@ cd test/hlds
 docker compose up --build
 
 # 3. Control it with rcon from the repo root
-node test/rcon.mjs nobel_bots 1       # count bots as players
 node test/rcon.mjs yb_quota 6         # add 6 bots
 node test/rcon.mjs nobel_start
 node test/rcon.mjs nobel_serverstart
@@ -50,7 +49,10 @@ bots can't (freezing, the pause menu). Connections from 127.0.0.1 get admin righ
 
 Things to know:
 
-- Without `nobel_bots 1`, bots are ignored just like in a real game.
+- The test server sets `nobel_bots 1`, so bots count as players. On a real server
+  (`nobel_bots 0`) they are ignored.
+- Commands like `nobel_bots` are server settings: from the game console, use
+  `amx_rcon <command>`.
 - Bots take Steam IDs from `test/hlds/nobel_bot_ids.ini` in join order: real players
   from the history, so the scoreboard and `nobel_balance` use real stats. Bots beyond
   the list get fake IDs like `BOT_<name>`.
