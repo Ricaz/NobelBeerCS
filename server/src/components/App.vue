@@ -1,6 +1,4 @@
 <script>
-const HEADERS = [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Rounds" ]
-const STATS_HEADERS = [ "Name", "K/D", "Knife K/D", "TK/S", "Øls", "Maps" ]
 const COOLDOWN_EVENTS = [ 'grenade' ]
 // Teamkills and suicides that happen close together (without a pause in between)
 // are summed up on one overlay
@@ -22,8 +20,8 @@ function silentWav() {
   return URL.createObjectURL(new Blob([ view ], { type: 'audio/wav' }))
 }
 
-function board(title, headers, scores, show) {
-  return { title, headers, scores, show: show && scores.length > 0 }
+function board(title, scores, show) {
+  return { title, scores, show: show && scores.length > 0 }
 }
 
 // Stats boards are not team-colored
@@ -82,21 +80,21 @@ export default {
     activeScores() {
       // Right after a game, the snapshot: by then everyone has left and switched teams
       if (this.finalScores)
-        return board("Final scoreboard", HEADERS, this.finalScores, true)
+        return board("Final scoreboard", this.finalScores, true)
       const live = this.state === 'live' || this.state === 'ended'
-      return board("Scoreboard", HEADERS, this.scores.filter(p => p.active === true), live)
+      return board("Scoreboard", this.scores.filter(p => p.active === true), live)
     },
     lanActive() {
       return this.state === 'live' || this.state === 'ended'
     },
     allScores() {
-      return board(null, [ "Name (last seen)", ...STATS_HEADERS.slice(1) ], neutral(this.allStats), true)
+      return board(null, neutral(this.allStats), true)
     },
     sessionScores() {
-      return board("Stats for last session", STATS_HEADERS, neutral(this.stats.session), this.state === 'ended')
+      return board("Stats for last session", neutral(this.stats.session), this.state === 'ended')
     },
     lanScores() {
-      return board("Stats for this LAN", STATS_HEADERS, neutral(this.stats.lan), this.state === 'ended')
+      return board("Stats for this LAN", neutral(this.stats.lan), this.state === 'ended')
     }
   },
 
@@ -582,24 +580,24 @@ export default {
                     <Highlights :highlights="stats.lanHighlights" />
                     <div class="row w-100">
                       <div v-if="sessionScores.show" class="scores-session pb-5 col-6">
-                        <Scoreboard :scoreboard="sessionScores.scores" :title="sessionScores.title" :headers="sessionScores.headers" />
+                        <Scoreboard :players="sessionScores.scores" :title="sessionScores.title" :extra="{ label: 'Maps', field: 'games' }" />
                       </div>
                       <div v-if="lanScores.show" class="scores-lan pb-5 col-6">
-                        <Scoreboard :scoreboard="lanScores.scores" :title="lanScores.title" :headers="lanScores.headers" />
+                        <Scoreboard :players="lanScores.scores" :title="lanScores.title" :extra="{ label: 'Maps', field: 'games' }" />
                       </div>
                     </div>
                   </div>
                 </Transition>
 
                 <div v-if="activeScores.show" class="scores-active pb-5">
-                  <TeamScoreboard :players="activeScores.scores" :title="activeScores.title" :flashes="finalScores ? null : flashes" />
+                  <Scoreboard :players="activeScores.scores" :title="activeScores.title" live :flashes="finalScores ? null : flashes" />
                 </div>
               </section>
 
               <section class="page" :inert="mode !== 'all'">
                 <Highlights :highlights="allHighlights" />
                 <div v-if="allScores.show" class="scores-total pb-5">
-                  <Scoreboard :scoreboard="allScores.scores" :headers="allScores.headers" />
+                  <Scoreboard :players="allScores.scores" name-label="Name (last seen)" :extra="{ label: 'Maps', field: 'games' }" />
                 </div>
               </section>
             </div>

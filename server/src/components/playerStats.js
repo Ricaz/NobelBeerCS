@@ -13,16 +13,6 @@ export function beers(sips) {
   return (sips / SIPS_PER_BEER).toFixed(1)
 }
 
-// Small badges after the name, only for stats that aren't zero
-export function badges(player) {
-  return [
-    [ 'knife', player.knifekills, 'knife kills' ],
-    [ 'knifed', player.knifed, 'times knifed' ],
-    [ 'TK', player.teamkills, 'teamkills' ],
-    [ 'suicide', player.suicides, 'suicides' ],
-  ].filter(([ , count ]) => count > 0).map(([ label, count, title ]) => ({ label, count, title }))
-}
-
 // Ids of the players with the most beers and the best K/D (ties share it)
 export function crowns(players) {
   const best = (value) => {

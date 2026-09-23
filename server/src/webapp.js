@@ -2,7 +2,6 @@ import { createApp } from 'vue'
 import 'bootstrap/dist/css/bootstrap.css'
 import App from './components/App.vue'
 import Scoreboard from './components/Scoreboard.vue'
-import TeamScoreboard from './components/TeamScoreboard.vue'
 import Overlay from './components/Overlay.vue'
 import Highlights from './components/Highlights.vue'
 import KillFeed from './components/KillFeed.vue'
@@ -11,7 +10,6 @@ import LiveBanner from './components/LiveBanner.vue'
 
 const app = createApp(App)
 	.component('Scoreboard', Scoreboard)
-	.component('TeamScoreboard', TeamScoreboard)
 	.component('Overlay', Overlay)
 	.component('Highlights', Highlights)
 	.component('KillFeed', KillFeed)

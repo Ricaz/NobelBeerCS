@@ -1,47 +1,80 @@
 <script setup>
-// Stats tables (last session, this LAN, all time): the same compact style as the
-// live scoreboard, one list sorted by beers
+// One scoreboard for everything: the live (or final) game and the stats tables
+// (last session, this LAN, all time). Players are listed in the given order.
 import { computed } from 'vue'
-import { kdRatio, beers, badges, crowns } from './playerStats.js'
+import BeerBar from './BeerBar.vue'
+import { kdRatio, beers, crowns } from './playerStats.js'
 
 const props = defineProps({
-  scoreboard: Array,
+  players: Array,
   title: String,
-  // [ name column, ..., last column ] e.g. 'Name (last seen)', 'Maps'
-  headers: Array,
+  nameLabel: { type: String, default: 'Name' },
+  // Optional last column, e.g. { label: 'Maps', field: 'games' }
+  extra: Object,
+  // The live game: glasses per beer, round number, row flashes, and a font that
+  // scales with the number of players
+  live: Boolean,
+  // Live: player id => changes on each kill, to flash their row
+  flashes: Object,
 })
 
-const best = computed(() => crowns(props.scoreboard))
+// [ header, player field ]; no field is the K/D ratio
+const COLUMNS = [
+  [ 'K', 'kills' ], [ 'D', 'deaths' ], [ 'K/D', null ],
+  [ 'Knife', 'knifekills' ], [ 'Knifed', 'knifed' ], [ 'TK', 'teamkills' ], [ 'Suicide', 'suicides' ],
+]
+
+const best = computed(() => crowns(props.players))
+const round = computed(() => props.live ? Math.max(0, ...props.players.map((p) => p.rounds || 0)) : 0)
 // Beers over many games run into the thousands: a bar relative to the leader
-const maxSips = computed(() => Math.max(1, ...props.scoreboard.map((p) => p.sips)))
+const maxSips = computed(() => Math.max(1, ...props.players.map((p) => p.sips)))
+const kd = (p) => kdRatio(p).toFixed(props.live ? 1 : 2)
 </script>
 
 <template>
-  <section class="stats-board">
-    <h1 v-if="title">{{ title }}</h1>
+  <section class="scoreboard" :class="{ live, 'with-extra': extra }" :style="{ '--rows': players.length }">
+    <h1 v-if="title">{{ title }}<span v-if="round" class="round">Round {{ round }}</span></h1>
+
     <div class="row head">
-      <span class="rank">#</span><span>{{ headers[0] }}</span><span class="num">K</span><span class="num">D</span><span class="num">K/D</span><span class="beers">Øl</span><span class="num">{{ headers.at(-1) }}</span>
+      <span class="rank">#</span>
+      <span>{{ nameLabel }}</span>
+      <span v-for="[ label ] in COLUMNS" :key="label" class="num">{{ label }}</span>
+      <span class="num">Øl</span>
+      <span v-if="extra" class="num">{{ extra.label }}</span>
     </div>
-    <div v-for="(p, i) in scoreboard" :key="p.id" class="row">
+
+    <div v-for="(p, i) in players" :key="p.id" class="row" :class="p.team">
+      <span v-if="live && flashes?.[p.id]" :key="flashes[p.id]" class="flash"></span>
       <span class="rank">{{ i + 1 }}</span>
       <span class="name">
         <span class="text" :title="p.name">{{ p.name }}</span>
         <span v-if="best.beers.has(p.id)" class="crown" title="Most øls">👑</span>
         <span v-if="best.kd.has(p.id)" class="crown" title="Best K/D">🎯</span>
-        <span v-for="b in badges(p)" :key="b.label" class="badge" :class="b.label" :title="b.title">{{ b.label }} {{ b.count }}</span>
       </span>
-      <span class="num">{{ p.kills }}</span>
-      <span class="num">{{ p.deaths }}</span>
-      <span class="num kd">{{ kdRatio(p).toFixed(2) }}</span>
-      <span class="beers"><span class="meter"><span :style="{ width: `${p.sips / maxSips * 100}%` }"></span></span><b>{{ beers(p.sips) }}</b></span>
-      <span class="num games">{{ p.games || p.rounds }}</span>
+      <span v-for="[ label, field ] in COLUMNS" :key="label" class="num" :class="field ? { zero: !p[field] } : 'kd'">
+        {{ field ? p[field] : kd(p) }}
+      </span>
+      <span class="beers">
+        <BeerBar v-if="live" :sips="p.sips" />
+        <span v-else class="meter"><span :style="{ width: `${p.sips / maxSips * 100}%` }"></span></span>
+        <b>{{ beers(p.sips) }}</b>
+      </span>
+      <span v-if="extra" class="num extra">{{ p[extra.field] }}</span>
     </div>
   </section>
 </template>
 
 <style scoped>
-.stats-board {
-  font-size: 1.25rem;
+.scoreboard {
+  container-type: inline-size;
+  font-size: 1.2rem;
+}
+
+/* The live board fills the screen: the font grows with fewer players (a row is
+   about 2.1em high), but stays small enough to fit a long name (a row is about
+   55em wide) */
+.scoreboard.live {
+  font-size: clamp(1rem, min(calc((100vh - 14rem) / (var(--rows) + 1) / 2.1), calc((100vw - 4rem) / 55)), 2rem);
 }
 
 h1 {
@@ -50,19 +83,59 @@ h1 {
   margin-bottom: .5em;
 }
 
-.row {
-  display: grid;
-  grid-template-columns: 1.8em minmax(0, 1fr) 3em 3em 3.2em 8.5em 3.4em;
-  align-items: center;
-  column-gap: .5em;
-  padding: .25em .4em;
-  border-bottom: 1px solid rgb(255 255 255 / 7%);
+.round {
+  margin-left: .8em;
+  font-size: .55em;
+  font-weight: 400;
+  color: rgb(255 255 255 / 55%);
 }
 
-.row.head {
-  font-size: .65em;
+.row {
+  position: relative;
+  display: grid;
+  /* # name K D K/D knife knifed TK suicide øl */
+  grid-template-columns: 1.8em minmax(0, 1fr) 3.4em 3.4em 3em 3.2em 3.6em 2.8em 3.8em var(--beer-column, 9em);
+  align-items: center;
+  column-gap: .5em;
+  padding: .25em .5em;
+  border-bottom: 1px solid rgb(255 255 255 / 7%);
+  /* Team color as a thin line on the left */
+  border-left: .2em solid var(--team, transparent);
+}
+
+.with-extra .row {
+  grid-template-columns: 1.8em minmax(0, 1fr) 3.4em 3.4em 3em 3.2em 3.6em 2.8em 3.8em var(--beer-column, 9em) 3.2em;
+}
+
+/* Narrow boards (the two stats tables side by side): no beer meter and a smaller
+   font, to leave room for the names */
+@container (width < 70rem) {
+  .row {
+    font-size: .85em;
+    --beer-column: 3.4em;
+  }
+
+  .meter {
+    display: none;
+  }
+}
+
+.live .row:not(.head) {
+  /* With few players the font can't grow without cutting names; taller rows fill
+     the screen instead */
+  min-height: min(calc((100vh - 14rem) / (var(--rows) + 1)), 2.6em);
+}
+
+.CT { --team: #00abff; }
+.TERRORIST { --team: #ea403e; }
+
+/* Only the header text is smaller: the row keeps the font size of the rows below,
+   so its columns (sized in em) line up with theirs */
+.row.head > * {
+  font-size: .6em;
   text-transform: uppercase;
-  letter-spacing: .08em;
+  letter-spacing: .04em;
+  white-space: nowrap;
   color: rgb(255 255 255 / 50%);
 }
 
@@ -82,6 +155,7 @@ h1 {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  color: var(--team, white);
 }
 
 .crown {
@@ -89,28 +163,18 @@ h1 {
   font-size: .8em;
 }
 
-.badge {
-  flex: none;
-  padding: .05em .4em;
-  border-radius: .3em;
-  font-size: .6em;
-  white-space: nowrap;
-  color: rgb(255 255 255 / 85%);
-  background: rgb(255 255 255 / 10%);
-}
-
-.badge.TK,
-.badge.suicide {
-  background: rgb(234 64 62 / 30%);
-}
-
 .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
+/* Zeros fade into the background, so the numbers that matter stand out */
+.num.zero {
+  color: rgb(255 255 255 / 25%);
+}
+
 .kd,
-.games {
+.extra {
   color: rgb(255 255 255 / 60%);
 }
 
@@ -119,6 +183,15 @@ h1 {
   justify-content: flex-end;
   align-items: center;
   gap: .4em;
+  min-width: 0;
+}
+
+.beers b {
+  min-width: 2.4em;
+  text-align: right;
+  font-size: 1.1em;
+  font-variant-numeric: tabular-nums;
+  color: rgb(255 180 0);
 }
 
 .meter {
@@ -135,11 +208,24 @@ h1 {
   background: rgb(255 180 0 / 85%);
 }
 
-.beers b {
-  min-width: 2.6em;
-  text-align: right;
-  font-size: 1.1em;
-  font-variant-numeric: tabular-nums;
-  color: rgb(255 180 0);
+/* A row lights up when that player gets a kill */
+.flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--team, white);
+  opacity: 0;
+  animation: flash 3s ease-out;
+}
+
+@keyframes flash {
+  0% { opacity: .35; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flash {
+    animation-duration: .01s;
+  }
 }
 </style>
