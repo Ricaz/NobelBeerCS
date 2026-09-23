@@ -54,6 +54,11 @@ export default {
       finalScores: null,
       // Bumped on every game start to show the "LIVE LIVE LIVE" banner (0 = hidden)
       liveBanner: 0,
+      // Player id => a number that changes on each of their kills, while their
+      // scoreboard row flashes (removed afterwards, so a row moving later doesn't
+      // replay it)
+      flashes: {},
+      flashCount: 0,
       // The browser won't play sound until someone clicks or presses a key on the page
       soundBlocked: false,
       socket: null,
@@ -135,6 +140,8 @@ export default {
 
       // Every kill goes in the killfeed, also during sound cooldowns
       this.addToKillFeed(data)
+      if ([ 'kill', 'headshot', 'knife', 'grenade', 'tk', 'kniferound' ].includes(data.cmd) && data.args?.[0])
+        this.flashRow(data.args[0])
 
       // A second teamkill/suicide in the same pause only updates the overlay text,
       // it doesn't restart the video or sound
@@ -198,6 +205,7 @@ export default {
           break
         case "firstround":
           this.liveBanner++
+          this.flashes = {}
           this.$refs.killfeed?.clear()
           this.clearScreen()
           break
@@ -495,6 +503,17 @@ export default {
         .catch(this.onPlayError)
     },
 
+    flashRow: function (id) {
+      const flash = ++this.flashCount
+      this.flashes = { ...this.flashes, [id]: flash }
+      setTimeout(() => {
+        if (this.flashes[id] !== flash)
+          return
+        const { [id]: done, ...rest } = this.flashes
+        this.flashes = rest
+      }, 3000)
+    },
+
     // Stops videos (and sounds) and hides the overlay, e.g. a teamkill or bomb video
     clearScreen: function (sounds = true) {
       this.paused = false
@@ -573,7 +592,7 @@ export default {
                 </Transition>
 
                 <div v-if="activeScores.show" class="scores-active pb-5">
-                  <Scoreboard :scoreboard="activeScores.scores" :title="activeScores.title" :headers="activeScores.headers" />
+                  <TeamScoreboard :players="activeScores.scores" :title="activeScores.title" :flashes="finalScores ? null : flashes" />
                 </div>
               </section>
 
@@ -783,42 +802,6 @@ export default {
     transition: none;
     animation-duration: 2s;
   }
-}
-
-.table td, .table th {
-  font-size: 1.5rem;
-  padding: .25rem;
-  border-color: #ffffff17;
-  text-shadow: 0 0 1px rgb(255 255 255 / 50%);
-  /*font-family: 'Trebuchet';*/
-  background-color: rgb(0 0 0 / 0%);
-}
-
-.scores-session .table td, .scores-session .table th, .scores-lan .table td, .scores-lan .table th {
-  font-size: 1.25rem;
-}
-
-table th {
-  color: white;
-}
-
-.table tr.neutral {
-  color: white;
-}
-
-.table tr.UNASSIGNED td {
-  background-color: rgb(220 220 220 / 0%);
-  color: gray;
-}
-
-.table tr.TERRORIST td {
-  background-color: rgb(232 4 4 / 0%);
-  color: #ea403e;
-}
-
-.table tr.CT td {
-  background-color: rgb(38 135 255 / 0%);
-  color: #00abff;
 }
 
 .hidden {
