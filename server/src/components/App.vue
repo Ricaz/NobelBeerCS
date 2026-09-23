@@ -84,7 +84,7 @@ export default {
       if (this.finalScores)
         return board("Final scoreboard", this.finalScores, true)
       const live = this.state === 'live' || this.state === 'ended'
-      return board("Scoreboard", this.scores.filter(p => p.active === true), live)
+      return board(null, this.scores.filter(p => p.active === true), live)
     },
     lanActive() {
       return this.state === 'live' || this.state === 'ended'
@@ -581,12 +581,12 @@ export default {
                   <!-- Waits while the end-of-map awards are shown with the final scoreboard -->
                   <div v-if="state === 'ended' && !awards" class="lan-stats">
                     <Highlights :highlights="stats.lanHighlights" />
-                    <div class="row w-100">
+                    <div class="row gx-5 w-100">
                       <div v-if="sessionScores.show" class="scores-session pb-5 col-6">
-                        <Scoreboard :players="sessionScores.scores" :title="sessionScores.title" :extra="{ label: 'Maps', field: 'games' }" />
+                        <Scoreboard :players="sessionScores.scores" :title="sessionScores.title" combined :extra="{ label: 'Maps', field: 'games' }" />
                       </div>
                       <div v-if="lanScores.show" class="scores-lan pb-5 col-6">
-                        <Scoreboard :players="lanScores.scores" :title="lanScores.title" :extra="{ label: 'Maps', field: 'games' }" />
+                        <Scoreboard :players="lanScores.scores" :title="lanScores.title" combined :extra="{ label: 'Maps', field: 'games' }" />
                       </div>
                     </div>
                   </div>
@@ -600,7 +600,7 @@ export default {
               <section class="page" :inert="mode !== 'all'">
                 <Highlights :highlights="allHighlights" />
                 <div v-if="allScores.show" class="scores-total pb-5">
-                  <Scoreboard :players="allScores.scores" name-label="Name (last seen)" :extra="{ label: 'Maps', field: 'games' }" />
+                  <Scoreboard :players="allScores.scores" name-label="Name (last seen)" ratio :extra="{ label: 'Maps', field: 'games' }" />
                 </div>
               </section>
             </div>

@@ -11,8 +11,12 @@ const props = defineProps({
   nameLabel: { type: String, default: 'Name' },
   // Optional last column, e.g. { label: 'Maps', field: 'games' }
   extra: Object,
-  // The live game: glasses per beer, round number, row flashes, and a font that
-  // scales with the number of players
+  // Kills/deaths and knife kills/knifed in one column each, for narrow boards
+  combined: Boolean,
+  // A K/D ratio column
+  ratio: Boolean,
+  // The live game: glasses per beer, row flashes, and a font that scales with
+  // the number of players
   live: Boolean,
   // Live: player id => changes on each kill, to flash their row
   flashes: Object,
@@ -20,26 +24,31 @@ const props = defineProps({
   dead: Array,
 })
 
-// [ header, player field ]; no field is the K/D ratio
-const COLUMNS = [
-  [ 'K', 'kills' ], [ 'D', 'deaths' ], [ 'K/D', null ],
-  [ 'Knife', 'knifekills' ], [ 'Knifed', 'knifed' ], [ 'TK', 'teamkills' ], [ 'Suicide', 'suicides' ],
-]
+// Number columns: header, width (em), text (or a pair of numbers, the first in
+// bold), and whether it fades as a zero
+const count = (label, field, width) => ({ label, width, text: (p) => p[field], zero: (p) => !p[field] })
+const pair = (label, a, b, width) => ({ label, width, pair: (p) => [ p[a], p[b] ], zero: (p) => !p[a] && !p[b] })
+const RATIO = { label: 'K/D', width: 3, text: (p) => kdRatio(p).toFixed(2), zero: () => false, class: 'kd' }
+const TK_SUICIDE = [ count('TK', 'teamkills', 2.8), count('Suicide', 'suicides', 3.8) ]
 
-const round = computed(() => props.live ? Math.max(0, ...props.players.map((p) => p.rounds || 0)) : 0)
+const columns = computed(() => props.combined
+  ? [ pair('K/D', 'kills', 'deaths', 4.6), pair('Knife K/D', 'knifekills', 'knifed', 4.4), ...TK_SUICIDE ]
+  : [ count('K', 'kills', 3.4), count('D', 'deaths', 3.4), ...(props.ratio ? [ RATIO ] : []),
+      count('Knife', 'knifekills', 3.2), count('Knifed', 'knifed', 3.6), ...TK_SUICIDE ])
+const columnWidths = computed(() => columns.value.map((c) => `${c.width}em`).join(' '))
+
 // Beers over many games run into the thousands: a bar relative to the leader
 const maxSips = computed(() => Math.max(1, ...props.players.map((p) => p.sips)))
-const kd = (p) => kdRatio(p).toFixed(props.live ? 1 : 2)
 </script>
 
 <template>
-  <section class="scoreboard" :class="{ live, 'with-extra': extra }" :style="{ '--rows': players.length }">
-    <h1 v-if="title">{{ title }}<span v-if="round" class="round">Round {{ round }}</span></h1>
+  <section class="scoreboard" :class="{ live, 'with-extra': extra }" :style="{ '--rows': players.length, '--columns': columnWidths }">
+    <h1 v-if="title">{{ title }}</h1>
 
     <div class="row head">
       <span class="rank">#</span>
       <span>{{ nameLabel }}</span>
-      <span v-for="[ label ] in COLUMNS" :key="label" class="num">{{ label }}</span>
+      <span v-for="c in columns" :key="c.label" class="num">{{ c.label }}</span>
       <span class="num">{{ live ? 'ØLs' : 'Øl' }}</span>
       <span v-if="extra" class="num">{{ extra.label }}</span>
     </div>
@@ -48,8 +57,9 @@ const kd = (p) => kdRatio(p).toFixed(props.live ? 1 : 2)
       <span v-if="live && flashes?.[p.id]" :key="flashes[p.id]" class="flash"></span>
       <span class="rank">{{ i + 1 }}</span>
       <span class="name" :title="p.name"><span class="text">{{ p.name }}</span></span>
-      <span v-for="[ label, field ] in COLUMNS" :key="label" class="num" :class="field ? { zero: !p[field] } : 'kd'">
-        {{ field ? p[field] : kd(p) }}
+      <span v-for="c in columns" :key="c.label" class="num" :class="[ c.class, { zero: c.zero(p) } ]">
+        <template v-if="c.pair"><b>{{ c.pair(p)[0] }}</b>-{{ c.pair(p)[1] }}</template>
+        <template v-else>{{ c.text(p) }}</template>
       </span>
       <span class="beers">
         <BeerBar v-if="live" :sips="p.sips" />
@@ -69,9 +79,15 @@ const kd = (p) => kdRatio(p).toFixed(props.live ? 1 : 2)
 
 /* The live board fills the screen (20 players fit at 1080p): the font grows with
    fewer players (a row is about 1.6em high), but stays small enough to fit a long
-   name (a row is about 57em wide) */
+   name (a row is about 53em wide). --chrome is the rest of the page's height. */
 .scoreboard.live {
-  font-size: clamp(1rem, min(calc((100vh - 16.5rem) / (var(--rows) + 1) / 1.6), calc((100vw - 4rem) / 57)), 2rem);
+  --chrome: 12.8rem;
+  font-size: clamp(1rem, min(calc((100vh - var(--chrome)) / (var(--rows) + 1) / 1.6), calc((100vw - 4rem) / 53)), 2rem);
+}
+
+/* The final scoreboard has a title */
+.scoreboard.live:has(> h1) {
+  --chrome: 16.5rem;
 }
 
 h1 {
@@ -80,36 +96,27 @@ h1 {
   margin-bottom: .5em;
 }
 
-.round {
-  margin-left: .8em;
-  font-size: .55em;
-  font-weight: 400;
-  color: rgb(255 255 255 / 55%);
-}
-
 .row {
   position: relative;
   display: grid;
-  /* # name K D K/D knife knifed TK suicide øl */
-  grid-template-columns: 1.8em minmax(0, 1fr) 3.4em 3.4em 3em 3.2em 3.6em 2.8em 3.8em var(--beer-column, 9em);
+  /* # name (number columns) øl; the ems in --columns are this row's */
+  grid-template-columns: 1.8em minmax(0, 1fr) var(--columns) var(--beer-column, 9em);
   align-items: center;
   column-gap: .5em;
-  padding: .12em .5em;
-  line-height: 1.3;
+  padding: .25em .5em;
   border-bottom: 1px solid rgb(255 255 255 / 7%);
   /* Team color as a thin line on the left */
   border-left: .2em solid var(--team, transparent);
 }
 
 .with-extra .row {
-  grid-template-columns: 1.8em minmax(0, 1fr) 3.4em 3.4em 3em 3.2em 3.6em 2.8em 3.8em var(--beer-column, 9em) 3.2em;
+  grid-template-columns: 1.8em minmax(0, 1fr) var(--columns) var(--beer-column, 9em) 3.2em;
 }
 
-/* Narrow boards (the two stats tables side by side): no beer meter and a smaller
-   font, to leave room for the names */
+/* Narrow boards (the two stats tables side by side): no beer meter, to leave
+   room for the names */
 @container (width < 70rem) {
   .row {
-    font-size: .85em;
     --beer-column: 3.4em;
   }
 
@@ -123,10 +130,16 @@ h1 {
   --beer-column: 11.5em;
 }
 
+.live .row {
+  /* Tighter rows, so 20 players fit at 1080p */
+  padding-block: .12em;
+  line-height: 1.3;
+}
+
 .live .row:not(.head) {
   /* With few players the font can't grow without cutting names; taller rows fill
      the screen instead */
-  min-height: min(calc((100vh - 16.5rem) / (var(--rows) + 1)), 2.2em);
+  min-height: min(calc((100vh - var(--chrome)) / (var(--rows) + 1)), 2.2em);
 }
 
 .CT { --team: #00abff; }
