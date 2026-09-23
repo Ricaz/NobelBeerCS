@@ -58,6 +58,7 @@ enum (+= 100)
     TASK_REPLY_POLL,
     TASK_BALANCE_TIMEOUT,
     TASK_STATS_TIMEOUT,
+    TASK_STATS_REFRESH,
     TASK_PAUSE_ACK
 }
 
@@ -79,7 +80,8 @@ enum Setting
     SET_FLASH,
     SET_ANTIZOOMPISTOL,
     SET_FLASHPROTECTION,
-    SET_NOOBBUFF
+    SET_NOOBBUFF,
+    SET_SIPS
 }
 new const SETTING_CMD[Setting][] = {
     "nobel_pause",
@@ -88,7 +90,8 @@ new const SETTING_CMD[Setting][] = {
     "nobel_flash",
     "nobel_antizoompistol",
     "nobel_flashprotection",
-    "nobel_noobbuff"
+    "nobel_noobbuff",
+    "nobel_sips"
 }
 new const SETTING_NAME[Setting][] = {
     "pausing",
@@ -97,10 +100,11 @@ new const SETTING_NAME[Setting][] = {
     "teamflash",
     "antizoompistol",
     "flashprotection",
-    "noobbuff"
+    "noobbuff",
+    "scoreboardsips"
 }
-new const bool:SETTING_ANNOUNCE[Setting] = { true, true, true, false, true, true, true }
-new bool:g_setting[Setting] = { false, false, true, false, false, false, true }
+new const bool:SETTING_ANNOUNCE[Setting] = { true, true, true, false, true, true, true, true }
+new bool:g_setting[Setting] = { false, false, true, false, false, false, true, true }
 
 // Special rounds. Only one can be active or queued at a time.
 enum RoundMode
@@ -156,6 +160,12 @@ new g_statDeaths[MAX_PLAYERS + 1]
 new bool:g_awaitingBalance
 new bool:g_awaitingStats
 new bool:g_warnedNoStats
+
+// Scoreboard sips: a ready-made SVC_PINGS message showing each player's sips as their ping
+new g_pingMessage[128]
+new g_pingMessageLength
+new g_pingBits
+new g_pingBitCount
 new g_roundStartMoney[MAX_PLAYERS + 1]
 new g_lastWeapon[MAX_PLAYERS + 1]
 new g_lastTeam[MAX_PLAYERS + 1][16]
@@ -199,6 +209,7 @@ public plugin_init()
     register_logevent("on_hostage_touched", 3, "2=Touched_A_Hostage")
 
     RegisterHam(Ham_Spawn, "player", "on_player_spawn", 1)
+    register_forward(FM_UpdateClientData, "on_update_client_data")
     RegisterHam(Ham_CS_Player_ResetMaxSpeed, "player", "on_reset_maxspeed", 1)
     RegisterHam(Ham_Weapon_WeaponIdle, "weapon_flashbang", "on_flashbang_idle")
     RegisterHam(Ham_TraceAttack, "hostage_entity", "on_hostage_hurt")
@@ -724,7 +735,20 @@ public on_round_end()
     count_rounds_without_kill()
 
     // Fresh sips/kills/deaths for the noob buff when players spawn next round
-    if (g_setting[SET_NOOBBUFF])
+    if (g_setting[SET_NOOBBUFF] || g_setting[SET_SIPS])
+        request_player_stats()
+}
+
+// Sips change with every kill. Several deaths close together share one request.
+refresh_player_stats_soon()
+{
+    if (g_setting[SET_SIPS] && !task_exists(TASK_STATS_REFRESH))
+        set_task(0.5, "task_stats_refresh", TASK_STATS_REFRESH)
+}
+
+public task_stats_refresh()
+{
+    if (!g_awaitingStats)
         request_player_stats()
 }
 
@@ -1001,6 +1025,7 @@ public on_death()
         return
 
     remove_task(TASK_RAMBO + victim)
+    refresh_player_stats_soon()
 
     new bool:suicide = killer == victim || !killer
     new bool:knifed = bool:equal(weapon, "knife")
@@ -1466,6 +1491,68 @@ apply_player_stats(JSON:reply)
         json_free(entry)
     }
     json_free(list)
+
+    build_ping_message()
+}
+
+// ----------------------------------------------------------------------------
+// Scoreboard sips: each player's sips are shown in the scoreboard's latency
+// column. The message is built once per stats update and only sent to
+// players while they hold the scoreboard key.
+// ----------------------------------------------------------------------------
+
+// SVC_PINGS is a bit stream: per player [1][slot:5][ping:12][loss:7], then [0]
+build_ping_message()
+{
+    g_pingMessageLength = 0
+    g_pingBits = 0
+    g_pingBitCount = 0
+
+    new players
+    for (new id = 1; id <= MAX_PLAYERS; id++) {
+        if (!g_hasStats[id] || !is_user_connected(id))
+            continue
+        write_ping_bits(1, 1)
+        write_ping_bits(id - 1, 5)
+        write_ping_bits(min(g_statSips[id], 4095), 12)
+        write_ping_bits(0, 7)
+        players++
+    }
+
+    if (!players) {
+        g_pingMessageLength = 0
+        return
+    }
+
+    write_ping_bits(0, 1)
+    if (g_pingBitCount)
+        g_pingMessage[g_pingMessageLength++] = g_pingBits & 0xFF
+}
+
+write_ping_bits(value, count)
+{
+    g_pingBits |= (value & ((1 << count) - 1)) << g_pingBitCount
+    g_pingBitCount += count
+    while (g_pingBitCount >= 8) {
+        g_pingMessage[g_pingMessageLength++] = g_pingBits & 0xFF
+        g_pingBits >>>= 8
+        g_pingBitCount -= 8
+    }
+}
+
+// Runs for every client on every update, so it returns as early as possible
+public on_update_client_data(id)
+{
+    if (!g_pingMessageLength || !g_enabled || !g_setting[SET_SIPS])
+        return FMRES_IGNORED
+    if (!(pev(id, pev_button) & IN_SCORE) && !(pev(id, pev_oldbuttons) & IN_SCORE))
+        return FMRES_IGNORED
+
+    message_begin(MSG_ONE_UNRELIABLE, SVC_PINGS, _, id)
+    for (new i; i < g_pingMessageLength; i++)
+        write_byte(g_pingMessage[i])
+    message_end()
+    return FMRES_IGNORED
 }
 
 apply_balance(JSON:response)

@@ -66,6 +66,8 @@ All the commands are toggleable.
   * In the next round, everyone gets an M249 with infinite ammo and a continuous supply of HE grenades
   * You cannot stop firing the gun
   * Kinda glitchy, especially if people try to circumvent the safeguards against using other weapons 
+* Sips in the scoreboard (`nobel_sips`, on by default)
+  * The in-game scoreboard's latency column shows each player's sips (needs the web app)
 * Noob buff (`nobel_noobbuff`, on by default)
   * Compensates badly performing players
 * Autobalance (`nobel_balance <games>`, runs automatically with `nobel_start`)

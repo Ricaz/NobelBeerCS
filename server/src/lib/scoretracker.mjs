@@ -20,7 +20,8 @@ const RATING_PRIOR = 20
 // as active until LAN_ACTIVE_FOR after its latest game started
 const LAN_GAP = 3 * 86400 * 1000
 const LAN_ACTIVE_FOR = 30 * 3600 * 1000
-// "Today" starts at this hour (server time). We play from ~21:00 into the morning.
+// "Today" starts at this hour (server time, 24-hour clock: 12 = noon). We play from
+// ~21:00 into the morning, so a whole night counts as one day.
 const DAY_STARTS_AT = 12
 // Show stats instead of the live scoreboard when a game has been quiet this long,
 // in case its end event never arrived
