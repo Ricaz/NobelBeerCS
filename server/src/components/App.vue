@@ -524,7 +524,8 @@ export default {
 
 
 <template>
-  <div class="container-fluid" data-bs-theme="dark">
+  <!-- Faded while an overlay (teamkill, knife, bomb...) is shown, so it's easier to read -->
+  <div class="container-fluid page-content" :class="{ muted: overlay.show }" data-bs-theme="dark">
     <div class="row">
       <div class="col-12 pt-4">
         <div class="container-fluid">
@@ -724,6 +725,15 @@ export default {
 .modes select.concealed {
   opacity: 0;
   visibility: hidden;
+}
+
+/* The page behind an overlay: plain opacity, which is cheap to animate */
+.page-content {
+  transition: opacity .3s;
+}
+
+.page-content.muted {
+  opacity: .15;
 }
 
 /* End-of-map awards fade out when their time is up */
