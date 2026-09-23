@@ -493,8 +493,8 @@ export default {
             <!-- Status and volume on three compact lines -->
             <!-- Labels and values in two columns, so the values line up -->
             <div class="status">
-              <span>Connection:</span><span class="value">{{ status }}</span>
-              <span>State:</span><span class="value">{{ state }}</span>
+              <span>Connection:</span><span class="value" :class="{ good: status === 'connected', bad: status === 'disconnected' }">{{ status }}</span>
+              <span>State:</span><span class="value" :class="{ good: state === 'live' }">{{ state }}</span>
               <label for="volume">Volume:</label>
               <span v-if="soundBlocked" class="value sound-blocked" role="alert">Interact with page to enable sounds</span>
               <input v-else id="volume" class="slider" type="range" ref="volume" step="1" min="0" max="100" v-model="volume" v-on:change="volumeChange" />
@@ -600,6 +600,14 @@ export default {
 
 .status .value {
   color: rgb(255 255 255 / 70%);
+}
+
+.status .value.good {
+  color: #04aa6d;
+}
+
+.status .value.bad {
+  color: #ea403e;
 }
 
 .modes {
