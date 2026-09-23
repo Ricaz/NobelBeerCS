@@ -29,6 +29,15 @@
 #define ROUND_ENDING_WARNING 19.0
 #define SOCKET_RETRY_DELAY 10.0
 
+// Noob buff: free gear after this many rounds in a row without a kill (additive)
+#define NOOBBUFF_ARMOR_ROUNDS 3
+#define NOOBBUFF_GRENADES_ROUNDS 4
+#define NOOBBUFF_RIFLE_ROUNDS 5
+
+const PRIMARY_WEAPONS = (1<<CSW_SCOUT) | (1<<CSW_XM1014) | (1<<CSW_MAC10) | (1<<CSW_AUG) | (1<<CSW_UMP45)
+    | (1<<CSW_SG550) | (1<<CSW_GALIL) | (1<<CSW_FAMAS) | (1<<CSW_AWP) | (1<<CSW_MP5NAVY) | (1<<CSW_M249)
+    | (1<<CSW_M3) | (1<<CSW_M4A1) | (1<<CSW_TMP) | (1<<CSW_G3SG1) | (1<<CSW_SG552) | (1<<CSW_AK47) | (1<<CSW_P90)
+
 // Task IDs. Per-player tasks add the player id (1-32) to their base.
 enum (+= 100)
 {
@@ -66,7 +75,8 @@ enum Setting
     SET_BADUM,
     SET_FLASH,
     SET_ANTIZOOMPISTOL,
-    SET_FLASHPROTECTION
+    SET_FLASHPROTECTION,
+    SET_NOOBBUFF
 }
 new const SETTING_CMD[Setting][] = {
     "nobel_pause",
@@ -74,7 +84,8 @@ new const SETTING_CMD[Setting][] = {
     "nobel_badum",
     "nobel_flash",
     "nobel_antizoompistol",
-    "nobel_flashprotection"
+    "nobel_flashprotection",
+    "nobel_noobbuff"
 }
 new const SETTING_NAME[Setting][] = {
     "pausing",
@@ -82,10 +93,11 @@ new const SETTING_NAME[Setting][] = {
     "badum",
     "teamflash",
     "antizoompistol",
-    "flashprotection"
+    "flashprotection",
+    "noobbuff"
 }
-new const bool:SETTING_ANNOUNCE[Setting] = { true, true, true, false, true, true }
-new bool:g_setting[Setting] = { false, false, true, false, false, false }
+new const bool:SETTING_ANNOUNCE[Setting] = { true, true, true, false, true, true, true }
+new bool:g_setting[Setting] = { false, false, true, false, false, false, true }
 
 // Special rounds. Only one can be active or queued at a time.
 enum RoundMode
@@ -131,6 +143,8 @@ new bool:g_flashThrown
 new bool:g_flashProtectionActive
 
 new bool:g_frozen[MAX_PLAYERS + 1]
+new g_roundsWithoutKill[MAX_PLAYERS + 1]
+new bool:g_killedThisRound[MAX_PLAYERS + 1]
 new g_roundStartMoney[MAX_PLAYERS + 1]
 new g_lastWeapon[MAX_PLAYERS + 1]
 new g_lastTeam[MAX_PLAYERS + 1][16]
@@ -418,6 +432,8 @@ find_player_by_id(const playerId[])
 public client_putinserver(id)
 {
     g_frozen[id] = false
+    g_roundsWithoutKill[id] = 0
+    g_killedThisRound[id] = false
     g_lastWeapon[id] = 0
     g_lastTeam[id][0] = 0
 }
@@ -487,6 +503,48 @@ public on_player_spawn(id)
         cs_set_user_bpammo(id, CSW_M249, 10000)
         set_task(5.0, "task_rambo", TASK_RAMBO + id, _, _, "b")
     }
+
+    if (g_setting[SET_NOOBBUFF] && g_mode == MODE_NORMAL)
+        give_noob_buff(id)
+}
+
+// Free gear for players without a kill for a while. The tiers add up, and only
+// missing items are given (CS allows 1 HE, 2 flashbangs and 1 smoke grenade).
+give_noob_buff(id)
+{
+    new rounds = g_roundsWithoutKill[id]
+    if (rounds < NOOBBUFF_ARMOR_ROUNDS)
+        return
+
+    new given[96]
+    give_item(id, "item_assaultsuit")
+    add(given, charsmax(given), "vest + helmet")
+    if (!user_has_weapon(id, CSW_HEGRENADE)) {
+        give_item(id, "weapon_hegrenade")
+        add(given, charsmax(given), ", HE")
+    }
+
+    if (rounds >= NOOBBUFF_GRENADES_ROUNDS) {
+        new flashbangs = user_has_weapon(id, CSW_FLASHBANG) ? cs_get_user_bpammo(id, CSW_FLASHBANG) : 0
+        for (new i = flashbangs; i < 2; i++)
+            give_item(id, "weapon_flashbang")
+        if (flashbangs < 2)
+            add(given, charsmax(given), ", flashbangs")
+        if (!user_has_weapon(id, CSW_SMOKEGRENADE)) {
+            give_item(id, "weapon_smokegrenade")
+            add(given, charsmax(given), ", smoke")
+        }
+    }
+
+    new weapons[32], num
+    if (rounds >= NOOBBUFF_RIFLE_ROUNDS && !(get_user_weapons(id, weapons, num) & PRIMARY_WEAPONS) && !cs_get_user_shield(id)) {
+        new bool:terrorist = cs_get_user_team(id) == CS_TEAM_T
+        give_item(id, terrorist ? "weapon_ak47" : "weapon_m4a1")
+        cs_set_user_bpammo(id, terrorist ? CSW_AK47 : CSW_M4A1, 90)
+        add(given, charsmax(given), terrorist ? ", AK-47" : ", M4A1")
+    }
+
+    log_amx("Noob buff: %n (%d rounds without a kill) got %s", id, rounds, given)
 }
 
 public on_reset_maxspeed(id)
@@ -619,6 +677,23 @@ public on_round_end()
 
     if (g_winStreakT >= 4 || g_winStreakCT >= 4)
         send_event("winstreak")
+
+    count_rounds_without_kill()
+}
+
+count_rounds_without_kill()
+{
+    new players[MAX_PLAYERS], num
+    get_game_players(players, num)
+    for (new i; i < num; i++) {
+        new id = players[i]
+        new CsTeams:team = cs_get_user_team(id)
+        if (team != CS_TEAM_T && team != CS_TEAM_CT)
+            continue
+
+        g_roundsWithoutKill[id] = g_killedThisRound[id] ? 0 : g_roundsWithoutKill[id] + 1
+        g_killedThisRound[id] = false
+    }
 }
 
 public task_round_ending()
@@ -894,6 +969,8 @@ public on_death()
         get_user_name(killer, killerName, charsmax(killerName))
         get_player_id(killer, killerId, charsmax(killerId))
         teamkill = !suicide && cs_get_user_team(killer) == cs_get_user_team(victim)
+        if (!suicide && !teamkill && killer <= MAX_PLAYERS)
+            g_killedThisRound[killer] = true
     }
 
     if (suicide) {
@@ -1669,6 +1746,8 @@ public cmd_nobel_serverstart(id, level, cid)
     g_setting[SET_KNIFEPAUSE] = true
     g_setting[SET_ANTIZOOMPISTOL] = true
     g_setting[SET_FLASHPROTECTION] = false
+    arrayset(g_roundsWithoutKill, 0, sizeof g_roundsWithoutKill)
+    arrayset(g_killedThisRound, false, sizeof g_killedThisRound)
 
     start_new_round()
     set_state(STATE_STARTED)
