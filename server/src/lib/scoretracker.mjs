@@ -57,10 +57,13 @@ const AWARDS_SHOWN_FOR = 5 * 60 * 1000
 // Events for a death (the victim is the second argument, or the only one), and for
 // a new round, when everyone is alive again
 const DEATH_EVENTS = [ 'kill', 'headshot', 'knife', 'grenade', 'tk', 'suicide', 'kniferound', 'bong' ]
-const ROUND_EVENTS = [ 'firstround', 'round', 'roundstart', 'leif', 'rambo', 'bongintro', 'mapend', 'mapchange' ]
+const ROUND_EVENTS = [ 'firstround', 'round', 'roundstart', 'leif', 'rambo', 'bongintro', 'mariokart', 'mapend', 'mapchange' ]
 // A new round (at the start of freeze time, or a special round): everyone drinks
 // the fællesskål. Not at 'roundstart', which is when freeze time ends.
-const NEW_ROUND_EVENTS = [ 'round', 'leif', 'rambo', 'bongintro' ]
+const NEW_ROUND_EVENTS = [ 'round', 'leif', 'rambo', 'bongintro', 'mariokart' ]
+// Mario Kart round: hit by an item (banana, shell, star or fireball; lightning;
+// blue shell; bob-omb). The victim is the second argument and drinks a sip.
+const ITEM_HIT_EVENTS = [ 'mk_hit', 'mk_zap', 'mk_stun', 'mk_bombed' ]
 
 function awards(scores) {
 	const players = scores.filter((p) => p.kills || p.deaths)
@@ -106,6 +109,8 @@ class Player {
 		this.suicides = 0
 		this.sips = 0
 		this.rounds = 0
+		// Mario Kart round: reaching the enemy spawn
+		this.points = 0
 		this.active = true
 	}
 }
@@ -512,6 +517,18 @@ export default class Tracker extends EventEmitter {
 		else if (cmd === 'suicide')
 			this.board.handleSuicide(args[0])
 
+		else if (ITEM_HIT_EVENTS.includes(cmd))
+			this.board.handleItemHit(args[1])
+
+		else if (cmd === 'mk_knifed')
+			this.board.handleKartKnife(args[0], args[1])
+
+		else if (cmd === 'mk_point')
+			this.board.handlePoint(args[0])
+
+		else if (cmd === 'mk_win')
+			this.board.handleRaceLost(args[0])
+
 		else if (cmd === 'mapend' || cmd === 'mapchange') {
 			this.endGame(Date.now())
 			this.updateState()
@@ -683,6 +700,34 @@ class Scoreboard {
 		}
 	}
 
+	handleItemHit(victimID) {
+		let victim = this.getPlayer(victimID)
+		if (victim)
+			victim.sips += 1
+	}
+
+	// Mario Kart round: knifed (or burned) back to the start. Not a kill on this
+	// scoreboard (the game counts it as a frag): only the victim drinks.
+	handleKartKnife(killerID, victimID) {
+		let victim = this.getPlayer(victimID)
+		if (victim)
+			victim.sips += 2
+	}
+
+	handlePoint(playerID) {
+		let player = this.getPlayer(playerID)
+		if (player)
+			player.points = (player.points ?? 0) + 1
+	}
+
+	// Everyone on the team that lost the race drinks half a beer
+	handleRaceLost(winningTeam) {
+		this.players.forEach((player) => {
+			if (player.active && player.team !== winningTeam && [ 'TERRORIST', 'CT' ].includes(player.team))
+				player.sips += SIPS_PER_BEER / 2
+		})
+	}
+
 	reset() {
 		this.players.forEach(function (player) {
 			player.kills = 0
@@ -693,6 +738,7 @@ class Scoreboard {
 			player.knifed = 0
 			player.sips = 0
 			player.rounds = 0
+			player.points = 0
 		})
 	}
 }

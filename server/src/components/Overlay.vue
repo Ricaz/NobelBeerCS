@@ -35,7 +35,7 @@ defineExpose({ playVideo, stopVideo, setVolume })
 <template>
 <div class="container-fluid overlay" v-show="overlay.show">
   <div class="overlay-body">
-    <div class="overlay-text" :class="{ summary: overlay.summary }">
+    <div class="overlay-text" :class="{ summary: overlay.summary, wrap: overlay.wrap }">
       <div v-for="(line, i) in overlay.lines" :key="i">
         <span v-for="(part, j) in line" :key="j" :class="[ part.team, { small: part.small } ]">{{ part.text }}</span>
       </div>
@@ -86,6 +86,20 @@ defineExpose({ playVideo, stopVideo, setVolume })
 
 .overlay-text.summary > :first-child {
   font-size: 52pt;
+}
+
+/* Long lists of names (the Mario Kart losers) wrap between the names */
+.overlay-text.wrap {
+  white-space: normal;
+  padding: 0 5%;
+  box-sizing: border-box;
+  font-size: 48pt;
+  line-height: 1.3;
+}
+
+.overlay-text.wrap .CT,
+.overlay-text.wrap .TERRORIST {
+  white-space: nowrap;
 }
 .overlay {
   /* Only shows things: clicks go through to the page (e.g. the volume slider) */

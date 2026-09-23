@@ -14,3 +14,7 @@ tls/key.pem
 
 # Killfeed icons extracted from your own game files (src/tools/extract-killfeed-icons.mjs)
 public/assets/killfeed/
+
+# Mario Kart sounds are Nintendo's, so they stay out of the repo
+public/assets/media/*/mariokart/
+public/assets/media/*/mk_*/

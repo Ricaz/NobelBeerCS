@@ -66,6 +66,28 @@ All the commands are toggleable.
   * In the next round, everyone gets an M249 with infinite ammo and a continuous supply of HE grenades
   * You cannot stop firing the gun
   * Kinda glitchy, especially if people try to circumvent the safeguards against using other weapons 
+* Mario Kart round (`nobel_kart`)
+  * A knife-only race to the other team's spawn, with a 3 minute round: each player who gets
+    there scores a point and goes back to their own spawn. The first team to 10 points wins.
+    When time runs out, the team with the most points wins; on a tie it's sudden death, with
+    another minute on the clock (as often as needed) and the next point winning.
+  * The losers drink half a beer: after the win sound they're slain, and the game pauses with
+    a song and their names on the big screen. In the admin pause menu, 9 ends Mario Kart and
+    0 races again.
+  * Everyone gets only a knife, and nothing can be bought or picked up
+  * Nobody can die: only an enemy's knife (and fireballs) hurts, and the hit that would kill
+    sends you back to your own spawn with full health. The victim is frozen to drink 2 sips,
+    and the killer gets a frag in-game and $350.
+  * Item boxes around the map: run over one to get an item, fire it with `+use` (E) or the
+    flashlight key (F). Mushroom, banana, green shell, star, lightning, blue shell, bob-omb
+    and fire flower (5 fireballs). Items hit teammates too, and your own green shell can hit
+    you, but the blue shell only goes for enemies. Green shells are the most common, lightning
+    and blue shells are rare, and the team behind on points gets slightly better items.
+    Getting hit costs a sip. Hits pay the shooter: $300 for a green shell, $100 per player
+    blown up by a bob-omb and $50 for a fireball.
+  * Item boxes go where players have stood during normal rounds (saved per map in
+    `data/nobel_spots/`), so a new map needs a round or two first
+  * Sounds go in the web app's `mariokart` and `mk_*` media folders, which are kept out of git
 * Sips in the scoreboard (`nobel_sips`, on by default)
   * The in-game scoreboard's Money column shows each player's sips (needs the web app and the
     updated CS 1.6 client with HP and Money columns)

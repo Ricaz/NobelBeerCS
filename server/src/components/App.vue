@@ -1,10 +1,12 @@
 <script>
-const COOLDOWN_EVENTS = [ 'grenade' ]
+// Sounds that could pile up: only one per second
+const COOLDOWN_EVENTS = [ 'grenade', 'mk_hit', 'mk_fireflower' ]
 // Teamkills and suicides that happen close together (without a pause in between)
 // are summed up on one overlay
 const SHAME_WINDOW = 3000
 const SHAME_HIDE_AFTER = 8000
-const KILL_EVENTS = [ 'kill', 'headshot', 'knife', 'grenade', 'tk', 'suicide', 'kniferound', 'bong' ]
+// Mario Kart's knife kills (back to the start) go in the killfeed too
+const KILL_EVENTS = [ 'kill', 'headshot', 'knife', 'grenade', 'tk', 'suicide', 'kniferound', 'bong', 'mk_knifed' ]
 
 // A 10 ms silent WAV file, for testing whether the browser allows sound
 function silentWav() {
@@ -40,9 +42,11 @@ export default {
       // ids of players dead this round
       dead: [],
       audioElements: [],
+      // The Mario Kart race music, which loops until the race is won
+      loopingSound: null,
       cooldowns: [],
       // lines: [ [ { text, team } ] ], names get their team's color
-      overlay: { lines: [], show: false, summary: false },
+      overlay: { lines: [], show: false, summary: false, wrap: false },
       // Teamkills and suicides since the game last resumed: { type: 'tk', killer, victim } | { type: 'suicide', player }
       shame: [],
       shameAt: 0,
@@ -140,7 +144,7 @@ export default {
 
       // Every kill goes in the killfeed, also during sound cooldowns
       this.addToKillFeed(data)
-      if ([ 'kill', 'headshot', 'knife', 'grenade', 'tk', 'kniferound' ].includes(data.cmd) && data.args?.[0])
+      if ([ 'kill', 'headshot', 'knife', 'grenade', 'tk', 'kniferound', 'mk_knifed' ].includes(data.cmd) && data.args?.[0])
         this.flashRow(data.args[0])
 
       // A second teamkill/suicide in the same pause only updates the overlay text,
@@ -184,9 +188,31 @@ export default {
         case "state":
           this.changeState(data.data)
           break
+        case "mk_point":
+          if (data.args?.[0])
+            this.flashRow(data.args[0])
+          break
+        // Shown until the game is unpaused, while the losers drink to mk_finished
+        case "mk_win": {
+          this.stopLoopingSound()
+          const winner = data.args?.[0]
+          const losers = this.scores.filter((p) => p.active && p.team !== winner && [ 'TERRORIST', 'CT' ].includes(p.team))
+          this.overlay.lines = [
+            [ { text: '🏁 ' }, { text: winner === 'CT' ? 'Counter-Terrorists' : 'Terrorists', team: winner }, { text: ' win the race!' } ],
+          ]
+          if (losers.length) {
+            this.overlay.lines.push([ { text: 'Half a beer for', small: true } ])
+            this.overlay.lines.push(losers.flatMap((p, i) => [ ...(i ? [ { text: ', ' } ] : []), { text: p.name, team: p.team } ]))
+          }
+          this.overlay.summary = false
+          this.overlay.wrap = true
+          this.overlay.show = true
+          break
+        }
         case "bombexploded":
           this.overlay.lines = [ [ { text: 'Allahu Akbar!' } ] ]
           this.overlay.summary = false
+          this.overlay.wrap = false
           this.overlay.show = true
           break
         case "awards":
@@ -217,6 +243,7 @@ export default {
         case "rambo":
         case "leif":
         case "bongintro":
+        case "mariokart":
         case "unpause":
           this.clearScreen()
           break
@@ -226,7 +253,9 @@ export default {
           break
       }
 
-      this.playMedia(data.media)
+      // The Mario Kart race music loops (the tracks are shorter than the round), until
+      // the race is won or the round ends
+      this.playMedia(data.media, data.cmd === 'mk_go')
     },
 
     changeState: function (state) {
@@ -371,6 +400,7 @@ export default {
 
       this.overlay.lines = this.shameLines()
       this.overlay.summary = this.shame.length > 1
+      this.overlay.wrap = false
       this.overlay.show = true
 
       // Paused games clear it on unpause. Without a pause (e.g. knife pausing off)
@@ -453,7 +483,7 @@ export default {
       ]
     },
 
-    playMedia: function (file) {
+    playMedia: function (file, loop = false) {
       if (!file)
         return
 
@@ -463,16 +493,19 @@ export default {
 
       console.log(`Playing file "${file}"`)
       if (soundTypes.includes(ext))
-        this.playSound(file)
+        this.playSound(file, loop)
       else if (videoTypes.includes(ext))
         this.$refs.overlay.playVideo(file).catch(this.onPlayError)
       else
         console.log(`Could not determine if "${ext}" is sound or video.`)
     },
 
-    playSound: function (path) {
+    playSound: function (path, loop = false) {
       let audio = new Audio(path)
       audio.volume = this.volume / 100
+      audio.loop = loop
+      if (loop)
+        this.loopingSound = audio
       audio.addEventListener('ended', () => {
         this.audioElements = this.audioElements.filter((a) => a !== audio)
       })
@@ -515,6 +548,14 @@ export default {
       }, 3000)
     },
 
+    stopLoopingSound: function () {
+      if (!this.loopingSound)
+        return
+      this.loopingSound.pause()
+      this.audioElements = this.audioElements.filter((a) => a !== this.loopingSound)
+      this.loopingSound = null
+    },
+
     // Stops videos (and sounds) and hides the overlay, e.g. a teamkill or bomb video
     clearScreen: function (sounds = true) {
       this.paused = false
@@ -530,6 +571,7 @@ export default {
       this.$refs.overlay.stopVideo()
       this.audioElements.forEach((audio) => audio.pause())
       this.audioElements = []
+      this.loopingSound = null
     },
 
     volumeChange: function () {
@@ -593,7 +635,8 @@ export default {
                 </Transition>
 
                 <div v-if="activeScores.show" class="scores-active pb-5">
-                  <Scoreboard :players="activeScores.scores" :title="activeScores.title" live :flashes="finalScores ? null : flashes" :dead="finalScores ? null : dead" />
+                  <Scoreboard :players="activeScores.scores" :title="activeScores.title" live :flashes="finalScores ? null : flashes" :dead="finalScores ? null : dead"
+                    :extra="activeScores.scores.some((p) => p.points) ? { label: 'Pts', field: 'points' } : null" />
                 </div>
               </section>
 

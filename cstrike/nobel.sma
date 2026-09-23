@@ -41,6 +41,59 @@
 #define NOOBBUFF_GRENADES_ROUNDS 4
 #define NOOBBUFF_FULL_ROUNDS 5
 
+// Mario Kart round: a race to the other team's spawn. Each player to get there
+// scores a point for their team, and the first team to KART_POINTS wins.
+#define KART_TICK 0.1
+#define KART_POINTS 10
+// sv_maxspeed during the round, so mushrooms and stars can go faster than usual
+// (the client itself caps forward speed at 400)
+#define KART_SPEED_LIMIT 450
+// mp_roundtime during the round (minutes)
+#define KART_ROUND_TIME 3.0
+// How long the win sound (mk_win) plays before the game pauses for the losers to
+// drink, with mk_finished playing
+#define KART_WIN_SOUND_TIME 7.0
+// A tie when time runs out: the round goes on this long, and the next point wins
+#define KART_SUDDEN_DEATH_TIME 60
+#define KART_KILL_MONEY 350
+#define KART_SHELL_HIT_MONEY 300
+#define KART_FIREBALL_HIT_MONEY 50
+#define KART_BOBOMB_HIT_MONEY 100
+// Bob-omb: thrown forward, and every player this close is stunned when it goes off
+#define KART_BOBOMB_SPEED 450.0
+#define KART_BOBOMB_LIFT 300.0
+#define KART_BOBOMB_FUSE 3.0
+#define KART_BOBOMB_RADIUS 200.0
+// Fire flower: 5 fireballs, bouncing like green shells but shorter lived. A hit
+// hurts like a knife slash and slows the player down a little.
+#define KART_FIREBALLS 5
+#define KART_FIREBALL_SPEED 960.0
+#define KART_FIREBALL_LIFETIME 1.5
+#define KART_FIREBALL_DAMAGE 15
+#define KART_FIREBALL_SLOW_SPEED 200.0
+#define KART_FIREBALL_SLOW_TIME 1.5
+// Item boxes are put out this far apart until the map is covered, so big maps get
+// more of them (up to KART_BOXES)
+#define KART_BOXES 48
+#define KART_BOX_SPACING 400.0
+#define KART_BOX_RESPAWN 10.0
+#define KART_SPIN_TIME 1.5
+#define KART_STUN_TIME 3.0
+#define KART_BOOST_SPEED 400.0
+#define KART_STAR_TIME 5.0
+// A short boost when the race starts, and when moving again after being sent back,
+// for players holding forward right then
+#define KART_START_BOOST_TIME 1.5
+#define KART_BLUESHELL_DELAY 2.5
+// It rises and spins above the thrower for this long, then darts to its target
+#define KART_BLUESHELL_RISE 1.0
+#define KART_SHELL_SPEED 700.0
+#define KART_SHELL_LIFETIME 6.0
+// Item box spots: where players have stood on the map, at least this far apart
+#define SPOT_SPACING 128.0
+#define MAX_SPOTS 512
+#define SPOTS_DIR "nobel_spots"
+
 const PRIMARY_WEAPONS = (1<<CSW_SCOUT) | (1<<CSW_XM1014) | (1<<CSW_MAC10) | (1<<CSW_AUG) | (1<<CSW_UMP45)
     | (1<<CSW_SG550) | (1<<CSW_GALIL) | (1<<CSW_FAMAS) | (1<<CSW_AWP) | (1<<CSW_MP5NAVY) | (1<<CSW_M249)
     | (1<<CSW_M3) | (1<<CSW_M4A1) | (1<<CSW_TMP) | (1<<CSW_G3SG1) | (1<<CSW_SG552) | (1<<CSW_AK47) | (1<<CSW_P90)
@@ -66,7 +119,14 @@ enum (+= 100)
     TASK_STATS_TIMEOUT,
     TASK_STATS_REFRESH,
     TASK_TELESWAP,
-    TASK_PAUSE_ACK
+    TASK_PAUSE_ACK,
+    TASK_KART,
+    TASK_KART_COUNTDOWN,
+    TASK_KART_STRIP,
+    TASK_KART_TIME_UP,
+    TASK_KART_FINISHED,
+    TASK_KART_BLUESHELL,
+    TASK_SPOTS
 }
 
 enum ModState
@@ -122,11 +182,46 @@ enum RoundMode
     MODE_NORMAL,
     MODE_KNIFE,
     MODE_RAMBO,
-    MODE_BONG
+    MODE_BONG,
+    MODE_KART
 }
-new const MODE_CMD[RoundMode][] = { "", "nobel_knife", "nobel_rambo", "nobel_bong" }
-new const MODE_NAME[RoundMode][] = { "", "LAAAARJF ROUND", "RAMBO ROUND", "BONG ROUND" }
-new const MODE_EVENT[RoundMode][] = { "", "leif", "rambo", "bongintro" }
+new const MODE_CMD[RoundMode][] = { "", "nobel_knife", "nobel_rambo", "nobel_bong", "nobel_kart" }
+new const MODE_NAME[RoundMode][] = { "", "LAAAARJF ROUND", "RAMBO ROUND", "BONG ROUND", "MARIO KART ROUND" }
+new const MODE_EVENT[RoundMode][] = { "", "leif", "rambo", "bongintro", "mariokart" }
+
+// Mario Kart items, one held at a time
+enum KartItem
+{
+    ITEM_NONE,
+    ITEM_MUSHROOM,
+    ITEM_BANANA,
+    ITEM_GREENSHELL,
+    ITEM_STAR,
+    ITEM_LIGHTNING,
+    ITEM_BLUESHELL,
+    ITEM_BOBOMB,
+    ITEM_FIREFLOWER
+}
+new const ITEM_NAME[KartItem][] = { "", "MUSHROOM", "BANANA", "GREEN SHELL", "STAR", "LIGHTNING", "BLUE SHELL", "BOB-OMB", "FIRE FLOWER" }
+// The web app event (and media folder) for using each item
+new const ITEM_EVENT[KartItem][] = { "", "mk_mushroom", "mk_banana", "mk_greenshell", "mk_star", "mk_lightning", "mk_blueshell", "mk_bobomb", "mk_fireflower" }
+// Odds of each item (in percent), and slightly better ones for the team behind on
+// points. Green shells are the most common (they're the funniest), lightning and
+// blue shells are rare.
+new const ITEM_ODDS[2][KartItem] = {
+    { 0, 18, 18, 32, 8, 2, 3, 9, 10 },
+    { 0, 17, 12, 30, 12, 4, 5, 10, 10 }
+}
+new const RAINBOW[][3] = { { 255, 0, 0 }, { 255, 128, 0 }, { 255, 255, 0 }, { 0, 255, 0 }, { 0, 128, 255 }, { 160, 0, 255 } }
+new const KART_CLASSES[][] = { "nobel_itembox", "nobel_banana", "nobel_shell", "nobel_blueshell", "nobel_bobomb", "nobel_fireball" }
+// The item box is Half-Life's weapon box (in valve/, which every client has)
+new const ITEMBOX_MODEL[] = "models/w_weaponbox.mdl"
+new const ITEMBOX_FALLBACK_MODEL[] = "models/w_kevlar.mdl"
+new const BANANA_MODEL[] = "models/w_flashbang.mdl"
+new const SHELL_MODEL[] = "models/w_hegrenade.mdl"
+new const BOBOMB_MODEL[] = "models/w_smokegrenade.mdl"
+// Half-Life's fireball (in valve/)
+new const FIREBALL_SPRITE[] = "sprites/xfireball3.spr"
 
 new const MAP_TYPES[][] = { "de", "cs", "fy", "as", "aim", "awp" }
 
@@ -160,6 +255,8 @@ new bool:g_flashThrown
 new bool:g_flashProtectionActive
 
 new bool:g_frozen[MAX_PLAYERS + 1]
+new bool:g_announceUnfreeze[MAX_PLAYERS + 1]
+new bool:g_boostOnUnfreeze[MAX_PLAYERS + 1]
 // Rambo: we sent this player +attack; and when we may send it again
 new bool:g_forcedAttack[MAX_PLAYERS + 1]
 new Float:g_nextForcedAttack[MAX_PLAYERS + 1]
@@ -183,12 +280,65 @@ new g_mapName[32]
 new g_mapType[8]
 new g_msgScreenFade
 new g_pauseMenu
+// At the end of a Mario Kart race: 9 ends Mario Kart, 0 races on
+new g_kartPauseMenu
+new bool:g_kartEndPause
 new g_vault = INVALID_HANDLE
 new g_socket
 new Float:g_socketRetryAt
 new Trie:g_overrides
 new Array:g_botIds
 new g_botIdIndex[MAX_PLAYERS + 1] = { -1, ... }
+
+// Mario Kart round
+new bool:g_raceStarted
+new bool:g_raceOver
+new bool:g_finalLap
+new bool:g_suddenDeath
+new g_points[CsTeams]
+new g_kartTicks
+new g_oldMaxSpeed = -1
+new Float:g_oldRoundTime = -1.0
+// The team that won the race, while the losers drink (before they're slain)
+new CsTeams:g_raceWinner
+// Each team's finish line: the middle of where the other team spawned
+new Float:g_finish[CsTeams][3]
+new Float:g_finishRadius[CsTeams]
+new bool:g_hasFinish[CsTeams]
+new Float:g_spawnOrigin[MAX_PLAYERS + 1][3]
+new Float:g_spawnAngles[MAX_PLAYERS + 1][3]
+// Distance from the player's spawn to their finish line
+new Float:g_raceLength[MAX_PLAYERS + 1]
+new KartItem:g_item[MAX_PLAYERS + 1]
+new bool:g_useHeld[MAX_PLAYERS + 1]
+new Float:g_botUseAt[MAX_PLAYERS + 1]
+new Float:g_boostUntil[MAX_PLAYERS + 1]
+new Float:g_starUntil[MAX_PLAYERS + 1]
+new Float:g_slowUntil[MAX_PLAYERS + 1]
+new Float:g_slowSpeed[MAX_PLAYERS + 1]
+// Shots left of a fire flower
+new g_itemUses[MAX_PLAYERS + 1]
+new Float:g_trailUntil[MAX_PLAYERS + 1]
+// The max speed an item gives the player (0: the weapon's own)
+new Float:g_kartSpeed[MAX_PLAYERS + 1]
+new Float:g_nextSendBack[MAX_PLAYERS + 1]
+// Spinning out: when it started (0: not spinning) and the view's yaw then
+new Float:g_spinStart[MAX_PLAYERS + 1]
+new Float:g_spinYaw[MAX_PLAYERS + 1]
+new Float:g_spinTime[MAX_PLAYERS + 1]
+new Float:g_spinTurn[MAX_PLAYERS + 1]
+// Who fired the blue shell on its way to this player
+new g_blueShellFrom[MAX_PLAYERS + 1]
+new Array:g_spots
+new bool:g_spotsChanged
+new g_hudSync
+new g_scoreSync
+new g_itemboxModel[64]
+new g_sprBeam
+new g_sprLightning
+new g_sprRing
+new g_sprExplosion
+new g_msgScoreInfo
 
 // Cvars
 new g_serverHost[64]
@@ -197,6 +347,21 @@ new g_numShield
 new g_numWeed
 new g_numKit
 new g_includeBots
+
+public plugin_precache()
+{
+    // Stock game files, so nobody has to download anything
+    copy(g_itemboxModel, charsmax(g_itemboxModel), file_exists(ITEMBOX_MODEL, true) ? ITEMBOX_MODEL : ITEMBOX_FALLBACK_MODEL)
+    precache_model(g_itemboxModel)
+    precache_model(BANANA_MODEL)
+    precache_model(SHELL_MODEL)
+    precache_model(BOBOMB_MODEL)
+    precache_model(FIREBALL_SPRITE)
+    g_sprBeam = precache_model("sprites/laserbeam.spr")
+    g_sprLightning = precache_model("sprites/lgtning.spr")
+    g_sprRing = precache_model("sprites/shockwave.spr")
+    g_sprExplosion = precache_model("sprites/zerogxplode.spr")
+}
 
 public plugin_init()
 {
@@ -227,6 +392,16 @@ public plugin_init()
     RegisterHam(Ham_Item_Deploy, "weapon_hegrenade", "on_hegrenade_deploy", 1)
     RegisterHam(Ham_TraceAttack, "hostage_entity", "on_hostage_hurt")
     RegisterHam(Ham_TakeDamage, "hostage_entity", "on_hostage_hurt")
+    RegisterHam(Ham_TakeDamage, "player", "on_player_take_damage")
+    RegisterHam(Ham_Use, "hostage_entity", "on_hostage_use")
+    RegisterHam(Ham_Touch, "armoury_entity", "on_weapon_touch")
+    RegisterHam(Ham_Touch, "weaponbox", "on_weapon_touch")
+    register_forward(FM_PlayerPreThink, "on_player_prethink")
+    register_touch("nobel_itembox", "player", "on_itembox_touch")
+    register_touch("nobel_banana", "player", "on_banana_touch")
+    register_touch("nobel_shell", "player", "on_shell_touch")
+    register_touch("nobel_bobomb", "player", "on_bobomb_touch")
+    register_touch("nobel_fireball", "player", "on_fireball_touch")
     RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_awp", "on_zoompistol_attack")
     RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_g3sg1", "on_zoompistol_attack")
     RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_sg550", "on_zoompistol_attack")
@@ -278,8 +453,13 @@ public plugin_init()
 
     get_mapname(g_mapName, charsmax(g_mapName))
     detect_map_type()
+    load_spots()
+    set_task(2.0, "task_record_spots", TASK_SPOTS, _, _, "b")
+    g_hudSync = CreateHudSyncObj()
+    g_scoreSync = CreateHudSyncObj()
 
     g_msgScreenFade = get_user_msgid("ScreenFade")
+    g_msgScoreInfo = get_user_msgid("ScoreInfo")
     g_pcvarPausable = get_cvar_pointer("pausable")
     create_pause_menu()
     load_overrides()
@@ -298,6 +478,9 @@ public plugin_init()
 
 public plugin_end()
 {
+    restore_kart_cvars()
+    save_spots()
+    ArrayDestroy(g_spots)
     if (g_vault != INVALID_HANDLE)
         nvault_close(g_vault)
     if (g_socket)
@@ -491,6 +674,9 @@ public client_disconnected(id)
 {
     g_frozen[id] = false
     remove_task(TASK_UNFREEZE + id)
+    remove_task(TASK_KART_BLUESHELL + id)
+    g_spinStart[id] = 0.0
+    g_item[id] = ITEM_NONE
     remove_task(TASK_RAMBO + id)
     remove_task(TASK_ZOOMSLAP + id)
 
@@ -521,6 +707,9 @@ public on_player_spawn(id)
         return
 
     client_cmd(id, "-attack")
+    // Where knifed players go back to in the Mario Kart round
+    pev(id, pev_origin, g_spawnOrigin[id])
+    pev(id, pev_v_angle, g_spawnAngles[id])
 
     if (!g_enabled)
         return
@@ -538,6 +727,12 @@ public on_player_spawn(id)
         give_item(id, "weapon_hegrenade")
         cs_set_user_bpammo(id, CSW_M249, 10000)
         set_task(5.0, "task_rambo", TASK_RAMBO + id, _, _, "b")
+    }
+
+    if (g_mode == MODE_KART) {
+        strip_user_weapons(id)
+        give_item(id, "weapon_knife")
+        reset_kart_player(id)
     }
 
     if (g_setting[SET_NOOBBUFF] && g_mode == MODE_NORMAL)
@@ -616,20 +811,27 @@ bool:is_struggling(id)
 
 public on_reset_maxspeed(id)
 {
-    if (g_frozen[id] && is_user_alive(id))
+    if (!is_user_alive(id))
+        return
+
+    if (g_frozen[id])
         set_user_maxspeed(id, FROZEN_SPEED)
+    else if (g_mode == MODE_KART && g_kartSpeed[id] > 0.0)
+        set_user_maxspeed(id, g_kartSpeed[id])
 }
 
-freeze_player(id)
+freeze_player(id, Float:duration = FREEZE_TIME, bool:announce = true)
 {
     if (!is_user_alive(id))
         return
 
     g_frozen[id] = true
+    g_announceUnfreeze[id] = announce
+    g_boostOnUnfreeze[id] = false
     ExecuteHamB(Ham_CS_Player_ResetMaxSpeed, id)
 
     remove_task(TASK_UNFREEZE + id)
-    set_task(FREEZE_TIME, "task_unfreeze", TASK_UNFREEZE + id)
+    set_task(duration, "task_unfreeze", TASK_UNFREEZE + id)
 }
 
 public task_unfreeze(taskid)
@@ -639,7 +841,10 @@ public task_unfreeze(taskid)
 
     if (is_user_alive(id)) {
         ExecuteHamB(Ham_CS_Player_ResetMaxSpeed, id)
-        client_print(id, print_chat, "You can now move again.")
+        if (g_announceUnfreeze[id])
+            client_print(id, print_chat, "You can now move again.")
+        if (g_boostOnUnfreeze[id] && g_mode == MODE_KART && g_raceStarted && !g_raceOver)
+            start_boost(id)
     }
 }
 
@@ -668,12 +873,22 @@ start_new_round()
         remove_task(TASK_RAMBO + id)
     }
     client_cmd(0, "-attack")
+    reset_kart()
 
     if (g_endModeAfterRound) {
         end_round_mode()
     } else if (g_nextMode != MODE_NORMAL) {
         g_mode = g_nextMode
         g_nextMode = MODE_NORMAL
+    }
+
+    if (g_mode == MODE_KART) {
+        set_kart_cvars()
+        // After the round restart has handed out the C4
+        set_task(0.1, "task_kart_strip", TASK_KART_STRIP)
+        // The countdown ends as freeze time does
+        new Float:delay = get_cvar_float("mp_freezetime") - 3.0
+        set_task(delay > 0.1 ? delay : 0.1, "task_kart_countdown", TASK_KART_COUNTDOWN)
     }
 
     if (g_mode != MODE_NORMAL)
@@ -712,6 +927,9 @@ public on_round_start()
 
     if (equali(g_mapName, "de_rats"))
         send_event("rats")
+
+    if (g_mode == MODE_KART)
+        start_race()
 
     if (g_setting[SET_FLASH]) {
         g_flashThrown = false
@@ -833,6 +1051,11 @@ public on_round_end()
         send_event("winstreak")
 
     count_rounds_without_kill()
+    save_spots()
+
+    // Before the next round starts, which reads the round time
+    if (g_mode == MODE_KART && g_endModeAfterRound)
+        restore_kart_cvars()
 
     // Fresh sips/kills/deaths for the noob buff when players spawn next round
     if (g_setting[SET_NOOBBUFF] || g_setting[SET_SIPS])
@@ -961,6 +1184,9 @@ switch_teams()
     if (equal(g_mapType, "as") && newVip)
         cs_set_user_vip(newVip, 1, 1, 1)
 
+    if (g_mode == MODE_KART)
+        swap_kart_teams()
+
     if (equal(g_mapType, "as") && newVip)
         log_amx("Half-time: swapped the teams of %d players, %n is VIP", num, newVip)
     else
@@ -1002,6 +1228,11 @@ end_round_mode()
         client_cmd(0, "-attack")
     }
 
+    if (g_mode == MODE_KART) {
+        reset_kart()
+        restore_kart_cvars()
+    }
+
     g_mode = MODE_NORMAL
     g_nextMode = MODE_NORMAL
     g_endModeAfterRound = false
@@ -1029,6 +1260,12 @@ announce_mode_queued(RoundMode:mode)
             csay("red", "FAT DET !!!")
         }
         case MODE_BONG: announce_bong()
+        case MODE_KART: {
+            csay("green", "NEXT ROUND IS MARIO KART ROUND !!!!!")
+            csay("red", "RACE TO THE ENEMY SPAWN !!!!")
+            csay("blue", "Item boxes: run over them, fire with E or F")
+            csay("red", "FAT DET !!!")
+        }
     }
     server_exec()
 }
@@ -1067,6 +1304,12 @@ public task_announce_mode()
             csay("red", "TATATATATATATATATATATATATATATATAT")
         }
         case MODE_BONG: announce_bong()
+        case MODE_KART: {
+            csay("green", "!! MARIO KART RUNDE !!")
+            csay("red", "RACE TO THE ENEMY SPAWN: FIRST TEAM TO 10 WINS")
+            csay("blue", "Item boxes: run over them, fire with E or F")
+            csay("red", "A knife sends them back to the start!")
+        }
     }
     server_exec()
 }
@@ -1092,6 +1335,9 @@ public task_rambo(taskid)
 // it is firing.
 public on_cmd_start(id, uc)
 {
+    if (g_mode == MODE_KART && is_user_alive(id))
+        return kart_cmd_start(id, uc)
+
     if (g_mode != MODE_RAMBO || !is_user_alive(id))
         return FMRES_IGNORED
 
@@ -1150,6 +1396,1659 @@ public task_rambo_slap(taskid)
 }
 
 // ----------------------------------------------------------------------------
+// Mario Kart round: a knife-only race to the other team's spawn. Nobody dies:
+// a knife sends players back to their own spawn. Item boxes around the map give
+// one item at a time, fired with +use or the flashlight key.
+// ----------------------------------------------------------------------------
+
+// A higher sv_maxspeed for mushrooms and stars, and a longer round. Set when the
+// round is queued, as the game reads the round time before the round starts.
+set_kart_cvars()
+{
+    if (g_oldMaxSpeed != -1)
+        return
+
+    g_oldMaxSpeed = get_cvar_num("sv_maxspeed")
+    set_cvar_num("sv_maxspeed", KART_SPEED_LIMIT)
+    g_oldRoundTime = get_cvar_float("mp_roundtime")
+    set_cvar_float("mp_roundtime", KART_ROUND_TIME)
+}
+
+restore_kart_cvars()
+{
+    if (g_oldMaxSpeed == -1)
+        return
+
+    set_cvar_num("sv_maxspeed", g_oldMaxSpeed)
+    set_cvar_float("mp_roundtime", g_oldRoundTime)
+    g_oldMaxSpeed = -1
+}
+
+reset_kart()
+{
+    remove_task(TASK_KART)
+    remove_task(TASK_KART_COUNTDOWN)
+    remove_task(TASK_KART_STRIP)
+    remove_task(TASK_KART_TIME_UP)
+    remove_task(TASK_KART_FINISHED)
+    g_raceWinner = CS_TEAM_UNASSIGNED
+    g_kartEndPause = false
+    g_raceStarted = false
+    g_raceOver = false
+    g_finalLap = false
+    g_suddenDeath = false
+    g_points[CS_TEAM_T] = 0
+    g_points[CS_TEAM_CT] = 0
+
+    for (new i; i < sizeof KART_CLASSES; i++) {
+        new ent = -1
+        while ((ent = find_ent_by_class(ent, KART_CLASSES[i])))
+            remove_entity(ent)
+    }
+
+    for (new id = 1; id <= MAX_PLAYERS; id++)
+        reset_kart_player(id)
+}
+
+reset_kart_player(id)
+{
+    remove_task(TASK_KART_BLUESHELL + id)
+    g_spinStart[id] = 0.0
+    g_item[id] = ITEM_NONE
+    g_boostUntil[id] = 0.0
+    g_starUntil[id] = 0.0
+    g_slowUntil[id] = 0.0
+    g_itemUses[id] = 0
+    g_kartSpeed[id] = 0.0
+    g_nextSendBack[id] = 0.0
+    g_blueShellFrom[id] = 0
+
+    if (!is_user_connected(id))
+        return
+
+    if (g_trailUntil[id] > 0.0)
+        kill_trail(id)
+    g_trailUntil[id] = 0.0
+    set_user_rendering(id)
+    ClearSyncHud(id, g_hudSync)
+}
+
+public task_kart_countdown()
+{
+    send_event("mk_countdown")
+}
+
+// No buying in the Mario Kart round, however it's tried (menus, commands, autobuy)
+public CS_OnBuyAttempt(id, item)
+{
+    if (g_mode != MODE_KART)
+        return PLUGIN_CONTINUE
+
+    client_print(id, print_center, "No shopping in Mario Kart!")
+    return PLUGIN_HANDLED
+}
+
+public CS_OnBuy(id, item)
+{
+    return g_mode == MODE_KART ? PLUGIN_HANDLED : PLUGIN_CONTINUE
+}
+
+add_money(id, amount)
+{
+    if (is_user_connected(id))
+        cs_set_user_money(id, min(cs_get_user_money(id) + amount, 16000))
+}
+
+// Knives only: no C4, grenades or anything left over from the last round
+public task_kart_strip()
+{
+    new players[MAX_PLAYERS], num
+    get_players(players, num, "a")
+    for (new i; i < num; i++) {
+        strip_user_weapons(players[i])
+        give_item(players[i], "weapon_knife")
+        // Knife damage is counted in full (see on_player_take_damage)
+        cs_set_user_armor(players[i], 0, CS_ARMOR_NONE)
+    }
+}
+
+// ...and no picking up weapons lying around
+public on_weapon_touch(weapon, id)
+{
+    return g_mode == MODE_KART ? HAM_SUPERCEDE : HAM_IGNORED
+}
+
+// Freeze time is over: find the finish lines, put out the item boxes and go
+start_race()
+{
+    set_finish(CS_TEAM_T, CS_TEAM_CT, "info_player_start")
+    set_finish(CS_TEAM_CT, CS_TEAM_T, "info_player_deathmatch")
+
+    new players[MAX_PLAYERS], num
+    get_players(players, num, "a")
+    for (new i; i < num; i++) {
+        new id = players[i]
+        new CsTeams:team = cs_get_user_team(id)
+        if (is_racer_team(team) && g_hasFinish[team])
+            g_raceLength[id] = floatmax(1.0, get_distance_f(g_spawnOrigin[id], g_finish[team]))
+    }
+
+    task_kart_strip()
+    place_item_boxes()
+    g_raceStarted = true
+    g_kartTicks = 0
+    set_task(KART_TICK, "task_kart", TASK_KART, _, _, "b")
+
+    new racers[MAX_PLAYERS], count
+    get_players(racers, count, "a")
+    for (new i; i < count; i++) {
+        if (is_racer_team(cs_get_user_team(racers[i])))
+            start_boost(racers[i])
+    }
+    // Early enough for the win sound to play before the round timer runs out
+    set_task(get_cvar_float("mp_roundtime") * 60.0 - KART_WIN_SOUND_TIME - 3.0, "task_kart_time_up", TASK_KART_TIME_UP)
+    send_event("mk_go")
+    show_score()
+}
+
+// Half-time: everyone is on the other team now, but still where they were. Each team
+// takes over the other's finish line and points, so everyone keeps racing to the
+// same place instead of scoring right where they stand.
+swap_kart_teams()
+{
+    new CsTeams:t = CS_TEAM_T, CsTeams:ct = CS_TEAM_CT
+    new Float:finish[3]
+    copy_vector(g_finish[t], finish)
+    copy_vector(g_finish[ct], g_finish[t])
+    copy_vector(finish, g_finish[ct])
+
+    new Float:radius = g_finishRadius[t]
+    g_finishRadius[t] = g_finishRadius[ct]
+    g_finishRadius[ct] = radius
+
+    new bool:hasFinish = g_hasFinish[t]
+    g_hasFinish[t] = g_hasFinish[ct]
+    g_hasFinish[ct] = hasFinish
+
+    new points = g_points[t]
+    g_points[t] = g_points[ct]
+    g_points[ct] = points
+
+    if (g_raceStarted)
+        show_score()
+}
+
+// Out of time: the team with the most points wins. On a tie it's sudden death: the
+// round goes on for another minute (again and again), and the next point wins.
+public task_kart_time_up()
+{
+    if (g_raceOver)
+        return
+
+    if (g_points[CS_TEAM_T] > g_points[CS_TEAM_CT]) {
+        win_race(CS_TEAM_T)
+        return
+    }
+    if (g_points[CS_TEAM_CT] > g_points[CS_TEAM_T]) {
+        win_race(CS_TEAM_CT)
+        return
+    }
+
+    if (!g_suddenDeath) {
+        g_suddenDeath = true
+        send_event("mk_finallap")
+        client_print(0, print_center, "SUDDEN DEATH!\nThe next point wins")
+        log_amx("Mario Kart: a %d-%d tie, sudden death", g_points[CS_TEAM_T], g_points[CS_TEAM_CT])
+    }
+    extend_round(float(KART_SUDDEN_DEATH_TIME))
+    set_task(float(KART_SUDDEN_DEATH_TIME), "task_kart_time_up", TASK_KART_TIME_UP)
+    show_score()
+}
+
+// Seconds left on the round timer
+Float:round_time_left()
+{
+    return float(get_gamerules_int("CHalfLifeMultiplay", "m_iRoundTimeSecs"))
+        - (get_gametime() - get_gamerules_float("CHalfLifeMultiplay", "m_fRoundCount"))
+}
+
+// Puts more time on the round timer, and on everyone's clock
+extend_round(Float:seconds)
+{
+    set_gamerules_int("CHalfLifeMultiplay", "m_iRoundTimeSecs", get_gamerules_int("CHalfLifeMultiplay", "m_iRoundTimeSecs") + floatround(seconds))
+    message_begin(MSG_ALL, get_user_msgid("RoundTime"))
+    write_short(floatround(round_time_left()))
+    message_end()
+}
+
+bool:is_racer_team(CsTeams:team)
+{
+    return team == CS_TEAM_T || team == CS_TEAM_CT
+}
+
+// A team's finish line is the middle of where the other team spawned this round,
+// or of the other team's spawn points if nobody is on it
+set_finish(CsTeams:team, CsTeams:other, const spawnClass[])
+{
+    new Float:points[64][3], num
+    new players[MAX_PLAYERS], count
+    get_players(players, count, "a")
+    for (new i; i < count && num < sizeof points; i++) {
+        if (cs_get_user_team(players[i]) == other) {
+            copy_vector(g_spawnOrigin[players[i]], points[num])
+            num++
+        }
+    }
+
+    if (!num) {
+        new ent = -1
+        while ((ent = find_ent_by_class(ent, spawnClass)) && num < sizeof points)
+            pev(ent, pev_origin, points[num++])
+    }
+
+    g_hasFinish[team] = num > 0
+    if (!num)
+        return
+
+    new Float:center[3]
+    for (new i; i < num; i++) {
+        for (new axis; axis < 3; axis++)
+            center[axis] += points[i][axis] / float(num)
+    }
+
+    // Big enough to cover the spawn, but not half the map
+    new Float:radius
+    for (new i; i < num; i++)
+        radius = floatmax(radius, flat_distance(points[i], center))
+    g_finishRadius[team] = floatclamp(radius + 64.0, 128.0, 320.0)
+    copy_vector(center, g_finish[team])
+}
+
+copy_vector(const Float:from[3], Float:to[3])
+{
+    to[0] = from[0]
+    to[1] = from[1]
+    to[2] = from[2]
+}
+
+Float:flat_distance(const Float:a[3], const Float:b[3])
+{
+    return floatsqroot((a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]))
+}
+
+bool:at_finish(id, CsTeams:team)
+{
+    new Float:origin[3]
+    pev(id, pev_origin, origin)
+    return floatabs(origin[2] - g_finish[team][2]) < 100.0 && flat_distance(origin, g_finish[team]) < g_finishRadius[team]
+}
+
+// 0.0 at the spawn, 1.0 at the finish, in a straight line
+Float:race_progress(id)
+{
+    new CsTeams:team = cs_get_user_team(id)
+    if (!is_racer_team(team) || !g_hasFinish[team] || g_raceLength[id] <= 0.0)
+        return 0.0
+
+    new Float:origin[3]
+    pev(id, pev_origin, origin)
+    return floatclamp(1.0 - get_distance_f(origin, g_finish[team]) / g_raceLength[id], 0.0, 1.0)
+}
+
+bool:is_enemy(id, other)
+{
+    return cs_get_user_team(id) != cs_get_user_team(other)
+}
+
+public task_kart()
+{
+    if (g_raceOver)
+        return
+
+    g_kartTicks++
+    new Float:now = get_gametime()
+    new players[MAX_PLAYERS], num
+    get_players(players, num, "a")
+    for (new i; i < num; i++) {
+        new id = players[i]
+        new CsTeams:team = cs_get_user_team(id)
+        if (!is_racer_team(team))
+            continue
+
+        update_kart_speed(id, now)
+        update_kart_glow(id, now)
+        if (g_trailUntil[id] > 0.0 && now >= g_trailUntil[id]) {
+            kill_trail(id)
+            g_trailUntil[id] = 0.0
+        }
+
+        if (g_hasFinish[team] && at_finish(id, team)) {
+            score_point(id)
+            if (g_raceOver)
+                return
+            continue
+        }
+
+        if (now < g_starUntil[id]) {
+            star_hits(id)
+            new color = (g_kartTicks + id) % sizeof RAINBOW
+            boost_light(id, RAINBOW[color][0], RAINBOW[color][1], RAINBOW[color][2])
+        } else if (now < g_boostUntil[id]) {
+            boost_light(id, 255, 140, 0)
+        }
+
+        if (g_item[id] != ITEM_NONE) {
+            if (is_user_bot(id) && now >= g_botUseAt[id] && !g_frozen[id])
+                use_item(id)
+            else if (g_kartTicks % 5 == 0)
+                show_item_hud(id)
+        }
+    }
+
+    update_kart_entities(now)
+    if (g_kartTicks % 10 == 0)
+        show_score()
+}
+
+update_kart_speed(id, Float:now)
+{
+    new Float:speed
+    if (now < g_starUntil[id] || now < g_boostUntil[id])
+        speed = KART_BOOST_SPEED
+    else if (now < g_slowUntil[id])
+        speed = g_slowSpeed[id]
+
+    if (speed != g_kartSpeed[id]) {
+        g_kartSpeed[id] = speed
+        ExecuteHamB(Ham_CS_Player_ResetMaxSpeed, id)
+    }
+}
+
+// Stars shine in rainbow colors, and a blue shell's target glows blue
+update_kart_glow(id, Float:now)
+{
+    if (now < g_starUntil[id]) {
+        new color = (g_kartTicks + id) % sizeof RAINBOW
+        glow(id, RAINBOW[color][0], RAINBOW[color][1], RAINBOW[color][2])
+    } else if (g_blueShellFrom[id]) {
+        glow(id, 0, 80, 255)
+    } else {
+        set_user_rendering(id)
+    }
+}
+
+glow(ent, r, g, b)
+{
+    new Float:color[3]
+    color[0] = float(r)
+    color[1] = float(g)
+    color[2] = float(b)
+    set_pev(ent, pev_renderfx, kRenderFxGlowShell)
+    set_pev(ent, pev_rendercolor, color)
+    set_pev(ent, pev_rendermode, kRenderNormal)
+    set_pev(ent, pev_renderamt, 20.0)
+}
+
+show_item_hud(id)
+{
+    set_hudmessage(255, 210, 0, -1.0, 0.72, 0, 0.0, 0.6, 0.0, 0.0, -1)
+    if (g_item[id] == ITEM_FIREFLOWER)
+        ShowSyncHudMsg(id, g_hudSync, "[ %s x%d ]\npress USE (E) or FLASHLIGHT (F)", ITEM_NAME[g_item[id]], g_itemUses[id])
+    else
+        ShowSyncHudMsg(id, g_hudSync, "[ %s ]\npress USE (E) or FLASHLIGHT (F)", ITEM_NAME[g_item[id]])
+}
+
+// The score at the top of everyone's screen
+show_score()
+{
+    set_hudmessage(255, 255, 255, -1.0, 0.1, 0, 0.0, 1.1, 0.0, 0.0, -1)
+    if (g_suddenDeath)
+        ShowSyncHudMsg(0, g_scoreSync, "Terrorists %d - %d Counter-Terrorists\nSUDDEN DEATH: the next point wins", g_points[CS_TEAM_T], g_points[CS_TEAM_CT])
+    else
+        ShowSyncHudMsg(0, g_scoreSync, "Terrorists %d - %d Counter-Terrorists\nfirst to %d", g_points[CS_TEAM_T], g_points[CS_TEAM_CT], KART_POINTS)
+}
+
+// Made it to the enemy spawn: a point for the team, and back to your own spawn
+score_point(id)
+{
+    new CsTeams:team = cs_get_user_team(id)
+    g_points[team]++
+
+    new playerId[MAX_AUTHID_LENGTH]
+    get_player_id(id, playerId, charsmax(playerId))
+    send_event("mk_point", playerId)
+    client_print(0, print_chat, "%n scored! Terrorists %d - %d Counter-Terrorists", id, g_points[CS_TEAM_T], g_points[CS_TEAM_CT])
+    show_score()
+
+    if (g_points[team] >= KART_POINTS || g_suddenDeath) {
+        win_race(team)
+        return
+    }
+
+    g_nextSendBack[id] = 0.0
+    send_back(id, 255, 210, 0)
+    client_print(id, print_center, "POINT!")
+
+    // One more point wins it
+    if (!g_finalLap && g_points[team] == KART_POINTS - 1) {
+        g_finalLap = true
+        send_event("mk_finallap")
+        client_print(0, print_center, "FINAL LAP!")
+    }
+}
+
+// The race is won: everyone stops and the win sound plays. Then the losers are
+// slain (which ends the round), and the game pauses while they drink half a beer
+// (the web app counts it) to mk_finished.
+win_race(CsTeams:team)
+{
+    g_raceOver = true
+    g_raceWinner = team
+    remove_task(TASK_KART)
+    remove_task(TASK_KART_TIME_UP)
+
+    // Time for the win sound before the round timer runs out
+    new Float:needed = KART_WIN_SOUND_TIME + 3.0
+    new Float:left = round_time_left()
+    if (left < needed)
+        extend_round(needed - left)
+
+    send_event("mk_win", team == CS_TEAM_T ? "TERRORIST" : "CT")
+    client_print(0, print_center, "%s WIN THE RACE!", team == CS_TEAM_T ? "TERRORISTS" : "COUNTER-TERRORISTS")
+    log_amx("Mario Kart: the %s won the race", team == CS_TEAM_T ? "terrorists" : "counter-terrorists")
+    refresh_player_stats_soon()
+
+    new players[MAX_PLAYERS], num
+    get_players(players, num, "a")
+    for (new i; i < num; i++) {
+        new id = players[i]
+        remove_task(TASK_UNFREEZE + id)
+        g_frozen[id] = true
+        ExecuteHamB(Ham_CS_Player_ResetMaxSpeed, id)
+    }
+
+    set_task(KART_WIN_SOUND_TIME, "task_kart_finished", TASK_KART_FINISHED)
+}
+
+public task_kart_finished()
+{
+    end_race_round()
+    send_event("mk_finished")
+    client_print(0, print_chat, "The losers drink half a beer!")
+    g_kartEndPause = true
+    pause_game("the Mario Kart race is over")
+}
+
+// Slaying the losers ends the round
+end_race_round()
+{
+    if (g_raceWinner == CS_TEAM_UNASSIGNED)
+        return
+
+    new CsTeams:winner = g_raceWinner
+    g_raceWinner = CS_TEAM_UNASSIGNED
+    new players[MAX_PLAYERS], num
+    get_players(players, num, "a")
+    for (new i; i < num; i++) {
+        new CsTeams:team = cs_get_user_team(players[i])
+        if (team != winner && is_racer_team(team))
+            user_kill(players[i], 1)
+    }
+}
+
+// A kill in all but name (by knife or fireball): the victim goes back to their spawn,
+// frozen there to drink (the web app counts their sips), and the killer gets a frag
+// and some money for an enemy
+kart_kill(attacker, victim, const weapon[])
+{
+    if (!send_back(victim))
+        return
+
+    freeze_player(victim)
+    g_boostOnUnfreeze[victim] = true
+    new attackerId[MAX_AUTHID_LENGTH], victimId[MAX_AUTHID_LENGTH]
+    get_player_id(victim, victimId, charsmax(victimId))
+    if (is_user_connected(attacker)) {
+        get_player_id(attacker, attackerId, charsmax(attackerId))
+        if (attacker != victim && is_enemy(attacker, victim)) {
+            add_money(attacker, KART_KILL_MONEY)
+            add_frag(attacker)
+        }
+        client_print(0, print_chat, "%n sent %n back to the start!", attacker, victim)
+    } else {
+        copy(attackerId, charsmax(attackerId), victimId)
+    }
+    send_event("mk_knifed", attackerId, victimId, "", weapon)
+    refresh_player_stats_soon()
+}
+
+// One more frag on the in-game scoreboard
+add_frag(id)
+{
+    new frags = get_user_frags(id) + 1
+    set_user_frags(id, frags)
+    message_begin(MSG_ALL, g_msgScoreInfo)
+    write_byte(id)
+    write_short(frags)
+    write_short(cs_get_user_deaths(id))
+    write_short(0)
+    write_short(_:cs_get_user_team(id))
+    message_end()
+}
+
+// Only an enemy's knife hurts, and nobody dies: the hit that would kill sends the
+// player back to their spawn with full health instead. So does a deadly fall into
+// a pit or the like.
+public on_player_take_damage(victim, inflictor, attacker, Float:damage, damagebits)
+{
+    if (g_mode != MODE_KART)
+        return HAM_IGNORED
+
+    if (!g_raceStarted || g_raceOver || !is_user_alive(victim))
+        return HAM_SUPERCEDE
+
+    if (1 <= attacker <= MAX_PLAYERS) {
+        if (attacker == victim || inflictor != attacker || !is_user_alive(attacker) || !is_enemy(attacker, victim)
+            || get_user_weapon(attacker) != CSW_KNIFE || get_gametime() < g_starUntil[victim])
+            return HAM_SUPERCEDE
+
+        if (damage < float(get_user_health(victim)))
+            return HAM_IGNORED
+
+        kart_kill(attacker, victim, "knife")
+    } else if (~damagebits & DMG_FALL && damage >= 50.0) {
+        send_back(victim)
+    }
+    return HAM_SUPERCEDE
+}
+
+public on_hostage_use(hostage)
+{
+    // +use fires items, and hostages stay home
+    return g_mode == MODE_KART ? HAM_SUPERCEDE : HAM_IGNORED
+}
+
+// Teleports a player to where they spawned (or a free spawn point of their team),
+// with full health, no boost, star or slow, and a flash of color
+bool:send_back(id, r = 255, g = 0, b = 0)
+{
+    new Float:now = get_gametime()
+    if (now < g_nextSendBack[id])
+        return false
+    g_nextSendBack[id] = now + 1.0
+
+    new Float:origin[3]
+    find_free_spawn(id, origin)
+    engfunc(EngFunc_SetOrigin, id, origin)
+    set_pev(id, pev_angles, g_spawnAngles[id])
+    set_pev(id, pev_v_angle, g_spawnAngles[id])
+    set_pev(id, pev_fixangle, 1)
+    set_pev(id, pev_velocity, Float:{ 0.0, 0.0, 0.0 })
+    set_user_health(id, 100)
+    clear_effects(id)
+    screen_fade(id, 1.0, r, g, b, 180)
+    return true
+}
+
+// The spawn point closest to where they spawned, as their own may be taken. Not
+// by team: after a half-time switch, players still start where they spawned.
+// Ends mushrooms, stars, slows and spinning (a held item is kept)
+clear_effects(id)
+{
+    g_boostUntil[id] = 0.0
+    g_starUntil[id] = 0.0
+    g_slowUntil[id] = 0.0
+    g_spinStart[id] = 0.0
+    if (g_trailUntil[id] > 0.0) {
+        kill_trail(id)
+        g_trailUntil[id] = 0.0
+    }
+    update_kart_speed(id, get_gametime())
+}
+
+find_free_spawn(id, Float:origin[3])
+{
+    copy_vector(g_spawnOrigin[id], origin)
+    if (is_hull_free(id, origin))
+        return
+
+    new const SPAWN_CLASSES[][] = { "info_player_start", "info_player_deathmatch" }
+    new Float:point[3], Float:best = -1.0
+    for (new i; i < sizeof SPAWN_CLASSES; i++) {
+        new ent = -1
+        while ((ent = find_ent_by_class(ent, SPAWN_CLASSES[i]))) {
+            pev(ent, pev_origin, point)
+            new Float:distance = get_distance_f(point, g_spawnOrigin[id])
+            if ((best < 0.0 || distance < best) && is_hull_free(id, point)) {
+                best = distance
+                copy_vector(point, origin)
+            }
+        }
+    }
+
+    // Every spawn point is taken: their own anyway
+    if (best < 0.0)
+        copy_vector(g_spawnOrigin[id], origin)
+}
+
+bool:is_hull_free(id, const Float:origin[3])
+{
+    engfunc(EngFunc_TraceHull, origin, origin, DONT_IGNORE_MONSTERS, HULL_HUMAN, id, 0)
+    return !get_tr2(0, TR_StartSolid) && !get_tr2(0, TR_AllSolid) && get_tr2(0, TR_InOpen)
+}
+
+// Fires the held item on a fresh press of +use or the flashlight key (which then
+// doesn't turn the flashlight on)
+kart_cmd_start(id, uc)
+{
+    new result = FMRES_IGNORED
+    new buttons = get_uc(uc, UC_Buttons)
+    new bool:fire = (buttons & IN_USE) && !g_useHeld[id]
+    g_useHeld[id] = (buttons & IN_USE) != 0
+
+    if (get_uc(uc, UC_Impulse) == 100) {
+        set_uc(uc, UC_Impulse, 0)
+        fire = true
+        result = FMRES_HANDLED
+    }
+
+    if (fire && g_item[id] != ITEM_NONE && g_raceStarted && !g_raceOver && !g_frozen[id])
+        use_item(id)
+    return result
+}
+
+// ----------------------------------------------------------------------------
+// Mario Kart items
+// ----------------------------------------------------------------------------
+
+public on_itembox_touch(box, id)
+{
+    if (g_mode != MODE_KART || !g_raceStarted || g_raceOver || !is_user_alive(id) || g_item[id] != ITEM_NONE)
+        return
+
+    // Taken: it comes back after a while (see update_kart_entities)
+    set_pev(box, pev_solid, SOLID_NOT)
+    set_pev(box, pev_effects, pev(box, pev_effects) | EF_NODRAW)
+    set_pev(box, pev_fuser1, get_gametime() + KART_BOX_RESPAWN)
+
+    give_random_item(id)
+}
+
+give_random_item(id)
+{
+    new CsTeams:team = cs_get_user_team(id)
+    new CsTeams:other = team == CS_TEAM_T ? CS_TEAM_CT : CS_TEAM_T
+    new tier = g_points[team] < g_points[other] ? 1 : 0
+    new total
+    for (new KartItem:item = ITEM_MUSHROOM; item < KartItem; item++)
+        total += ITEM_ODDS[tier][item]
+
+    new roll = random(total)
+    for (new KartItem:item = ITEM_MUSHROOM; item < KartItem; item++) {
+        roll -= ITEM_ODDS[tier][item]
+        if (roll < 0) {
+            g_item[id] = item
+            break
+        }
+    }
+
+    g_itemUses[id] = g_item[id] == ITEM_FIREFLOWER ? KART_FIREBALLS : 1
+    g_botUseAt[id] = get_gametime() + random_float(1.0, 5.0)
+    show_item_hud(id)
+}
+
+use_item(id)
+{
+    new KartItem:item = g_item[id]
+    if (--g_itemUses[id] > 0) {
+        // Fire flower shots left; bots fire the next one soon
+        g_botUseAt[id] = get_gametime() + random_float(0.4, 1.0)
+        show_item_hud(id)
+    } else {
+        g_item[id] = ITEM_NONE
+        ClearSyncHud(id, g_hudSync)
+    }
+
+    new playerId[MAX_AUTHID_LENGTH]
+    get_player_id(id, playerId, charsmax(playerId))
+    send_event(ITEM_EVENT[item], playerId)
+
+    switch (item) {
+        case ITEM_MUSHROOM: use_mushroom(id)
+        case ITEM_BANANA: use_banana(id)
+        case ITEM_GREENSHELL: use_greenshell(id)
+        case ITEM_STAR: use_star(id)
+        case ITEM_LIGHTNING: use_lightning(id)
+        case ITEM_BLUESHELL: use_blueshell(id)
+        case ITEM_BOBOMB: use_bobomb(id)
+        case ITEM_FIREFLOWER: use_fireflower(id)
+    }
+}
+
+// Mushroom: 3 seconds of speed, and a push forward
+use_mushroom(id)
+{
+    g_boostUntil[id] = get_gametime() + 3.0
+    boost(id, 3.0)
+}
+
+// Star: the mushroom's boost for 5 seconds, glowing in rainbow colors (see
+// update_kart_glow). Nothing can touch you, and anyone you run into spins out.
+use_star(id)
+{
+    g_starUntil[id] = get_gametime() + KART_STAR_TIME
+    boost(id, KART_STAR_TIME)
+}
+
+// Off to a flying start: a short mushroom boost, if they're holding forward
+start_boost(id)
+{
+    if (~pev(id, pev_button) & IN_FORWARD)
+        return
+
+    new Float:until = get_gametime() + KART_START_BOOST_TIME
+    if (until > g_boostUntil[id]) {
+        g_boostUntil[id] = until
+        boost(id, KART_START_BOOST_TIME)
+    }
+}
+
+// Speeds up for a while (the reason is in g_boostUntil or g_starUntil), with a
+// push forward and a streak behind
+boost(id, Float:seconds)
+{
+    new Float:now = get_gametime()
+    set_trail(id, now + seconds, 255, 140, 0)
+    update_kart_speed(id, now)
+
+    new Float:ahead[3], Float:velocity[3]
+    flat_forward(id, ahead)
+    pev(id, pev_velocity, velocity)
+    velocity[0] = ahead[0] * 450.0
+    velocity[1] = ahead[1] * 450.0
+    set_pev(id, pev_velocity, velocity)
+}
+
+star_hits(id)
+{
+    new Float:origin[3], Float:otherOrigin[3]
+    pev(id, pev_origin, origin)
+    new players[MAX_PLAYERS], num
+    get_players(players, num, "a")
+    for (new i; i < num; i++) {
+        new other = players[i]
+        if (other == id || !is_racer_team(cs_get_user_team(other)))
+            continue
+        pev(other, pev_origin, otherOrigin)
+        if (get_distance_f(origin, otherOrigin) < 64.0)
+            spin_out(other, id, "star")
+    }
+}
+
+// Banana: dropped behind you, and spins out the first player to run over it,
+// teammates too (and you, if you turn back for it)
+use_banana(id)
+{
+    new Float:origin[3], Float:ahead[3], Float:target[3]
+    pev(id, pev_origin, origin)
+    flat_forward(id, ahead)
+    for (new axis; axis < 2; axis++)
+        target[axis] = origin[axis] - ahead[axis] * 64.0
+    target[2] = origin[2] - 16.0
+    origin[2] -= 16.0
+    clip_to_world(id, origin, target, 16.0)
+
+    new banana = create_kart_entity("nobel_banana", BANANA_MODEL, target, Float:{ -12.0, -12.0, 0.0 }, Float:{ 12.0, 12.0, 12.0 }, SOLID_TRIGGER, MOVETYPE_TOSS, id)
+    if (!banana)
+        return
+    set_pev(banana, pev_fuser1, get_gametime() + 1.0)
+    glow(banana, 255, 230, 0)
+}
+
+public on_banana_touch(banana, id)
+{
+    new Float:dropperSafeUntil
+    pev(banana, pev_fuser1, dropperSafeUntil)
+    if (!is_user_alive(id) || id == pev(banana, pev_owner) && get_gametime() < dropperSafeUntil)
+        return
+
+    // A star runs it over without spinning out
+    spin_out(id, pev(banana, pev_owner), "banana")
+    kill_entity(banana)
+}
+
+// Green shell: fired straight ahead, bouncing off walls, and spins out the first
+// player it hits: teammates, or yourself once it has left your hands
+use_greenshell(id)
+{
+    new Float:origin[3], Float:ahead[3], Float:start[3]
+    pev(id, pev_origin, origin)
+    flat_forward(id, ahead)
+    origin[2] -= 18.0
+    for (new axis; axis < 2; axis++)
+        start[axis] = origin[axis] + ahead[axis] * 32.0
+    start[2] = origin[2]
+    clip_to_world(id, origin, start, 8.0)
+
+    new shell = create_kart_entity("nobel_shell", SHELL_MODEL, start, Float:{ -6.0, -6.0, -6.0 }, Float:{ 6.0, 6.0, 6.0 }, SOLID_BBOX, MOVETYPE_BOUNCEMISSILE, id)
+    if (!shell)
+        return
+
+    new Float:velocity[3]
+    velocity[0] = ahead[0] * KART_SHELL_SPEED
+    velocity[1] = ahead[1] * KART_SHELL_SPEED
+    set_pev(shell, pev_velocity, velocity)
+    set_pev(shell, pev_vuser1, ahead)
+    set_pev(shell, pev_fuser1, get_gametime() + KART_SHELL_LIFETIME)
+    // The engine never lets an entity hit its owner, so the shooter is also kept
+    // here, and the owner is let go shortly (see steer_shell)
+    set_pev(shell, pev_iuser2, id)
+    set_pev(shell, pev_fuser3, get_gametime() + 0.3)
+    glow(shell, 0, 255, 0)
+    beam_follow(shell, 0, 255, 0)
+}
+
+public on_shell_touch(shell, id)
+{
+    if (!is_user_alive(id))
+        return
+
+    new shooter = pev(shell, pev_iuser2)
+    if (spin_out(id, shooter, "greenshell")) {
+        hit_light(id, 0, 255, 0)
+        if (shooter != id)
+            add_money(shooter, KART_SHELL_HIT_MONEY)
+    }
+    kill_entity(shell)
+}
+
+// Shells keep their speed along the ground: the engine bounces them off walls,
+// this adds gravity, takes most of the height out of each bounce, and speeds them
+// up again
+steer_shell(shell, Float:now)
+{
+    new Float:ownerSafeUntil
+    pev(shell, pev_fuser3, ownerSafeUntil)
+    if (pev(shell, pev_owner) && now >= ownerSafeUntil)
+        set_pev(shell, pev_owner, 0)
+
+    new Float:velocity[3], Float:direction[3]
+    pev(shell, pev_velocity, velocity)
+    pev(shell, pev_vuser1, direction)
+
+    new Float:speed = floatsqroot(velocity[0] * velocity[0] + velocity[1] * velocity[1])
+    if (speed > 50.0) {
+        direction[0] = velocity[0] / speed
+        direction[1] = velocity[1] / speed
+        set_pev(shell, pev_vuser1, direction)
+    }
+
+    new Float:target = pev(shell, pev_iuser1) ? KART_FIREBALL_SPEED : KART_SHELL_SPEED
+    velocity[0] = direction[0] * target
+    velocity[1] = direction[1] * target
+
+    // Falling at the last check and rising now: it bounced
+    new Float:lastRise
+    pev(shell, pev_fuser2, lastRise)
+    if (lastRise < 0.0 && velocity[2] > 0.0)
+        velocity[2] *= 0.3
+    velocity[2] = floatmin(velocity[2], 150.0) - 80.0
+    set_pev(shell, pev_fuser2, velocity[2])
+    set_pev(shell, pev_velocity, velocity)
+    set_pev(shell, pev_flags, pev(shell, pev_flags) & ~FL_ONGROUND)
+}
+
+// Lightning: strikes everyone else, teammates too, who are slowed down for 4 seconds
+// and lose their item
+use_lightning(id)
+{
+    new playerId[MAX_AUTHID_LENGTH], victimId[MAX_AUTHID_LENGTH]
+    get_player_id(id, playerId, charsmax(playerId))
+
+    new players[MAX_PLAYERS], num
+    get_players(players, num, "a")
+    for (new i; i < num; i++) {
+        new victim = players[i]
+        if (victim == id || !is_racer_team(cs_get_user_team(victim)) || !can_be_hit(victim))
+            continue
+
+        lightning_bolt(victim)
+        screen_fade(victim, 1.0, 255, 255, 255, 180)
+        slow_down(victim, 150.0, 4.0)
+        g_item[victim] = ITEM_NONE
+        g_itemUses[victim] = 0
+        ClearSyncHud(victim, g_hudSync)
+
+        get_player_id(victim, victimId, charsmax(victimId))
+        send_event("mk_zap", playerId, victimId)
+    }
+}
+
+// Blue shell: flies through walls and everything to the enemy furthest ahead, who
+// glows blue until it lands and is stunned: a black screen and frozen for 3 seconds
+use_blueshell(id)
+{
+    new target, Float:best = -1.0
+    new players[MAX_PLAYERS], num
+    get_players(players, num, "a")
+    for (new i; i < num; i++) {
+        new other = players[i]
+        if (!is_enemy(id, other) || !is_racer_team(cs_get_user_team(other)) || g_blueShellFrom[other])
+            continue
+        new Float:progress = race_progress(other)
+        if (progress > best) {
+            best = progress
+            target = other
+        }
+    }
+
+    if (!target) {
+        client_print(id, print_center, "The blue shell found nobody to hit")
+        return
+    }
+
+    g_blueShellFrom[target] = id
+    client_print(target, print_center, "BLUE SHELL INCOMING!")
+    set_task(KART_BLUESHELL_DELAY, "task_blueshell", TASK_KART_BLUESHELL + target)
+
+    new Float:origin[3]
+    pev(id, pev_origin, origin)
+    origin[2] += 32.0
+    new shell = create_kart_entity("nobel_blueshell", SHELL_MODEL, origin, Float:{ -6.0, -6.0, -6.0 }, Float:{ 6.0, 6.0, 6.0 }, SOLID_NOT, MOVETYPE_NOCLIP, id)
+    if (!shell)
+        return
+
+    new Float:now = get_gametime()
+    set_pev(shell, pev_enemy, target)
+    set_pev(shell, pev_fuser1, now + KART_BLUESHELL_DELAY)
+    set_pev(shell, pev_fuser2, now + KART_BLUESHELL_RISE)
+    glow(shell, 0, 80, 255)
+    beam_follow(shell, 0, 80, 255)
+    steer_blueshell(shell, now)
+}
+
+// First it rises, spinning fast, then heads for the target so it arrives just as
+// it lands (with the end of its sound), coming down on them from above
+steer_blueshell(shell, Float:now)
+{
+    new Float:riseEnds
+    pev(shell, pev_fuser2, riseEnds)
+    if (now < riseEnds) {
+        set_pev(shell, pev_velocity, Float:{ 0.0, 0.0, 120.0 })
+        set_pev(shell, pev_avelocity, Float:{ 0.0, 1080.0, 0.0 })
+        return
+    }
+    set_pev(shell, pev_avelocity, Float:{ 0.0, 360.0, 0.0 })
+
+    new target = pev(shell, pev_enemy)
+    new Float:landsAt
+    pev(shell, pev_fuser1, landsAt)
+    if (!is_user_alive(target) || now >= landsAt) {
+        kill_entity(shell)
+        return
+    }
+
+    new Float:from[3], Float:to[3], Float:velocity[3]
+    pev(shell, pev_origin, from)
+    pev(target, pev_origin, to)
+    new Float:left = landsAt - now
+    to[2] += 16.0 + 150.0 * left / (KART_BLUESHELL_DELAY - KART_BLUESHELL_RISE)
+
+    left = floatmax(left, KART_TICK)
+    for (new axis; axis < 3; axis++)
+        velocity[axis] = (to[axis] - from[axis]) / left
+    set_pev(shell, pev_velocity, velocity)
+}
+
+public task_blueshell(taskid)
+{
+    new target = taskid - TASK_KART_BLUESHELL
+    new from = g_blueShellFrom[target]
+    g_blueShellFrom[target] = 0
+
+    new shell = -1
+    while ((shell = find_ent_by_class(shell, "nobel_blueshell"))) {
+        if (pev(shell, pev_enemy) == target)
+            kill_entity(shell)
+    }
+
+    if (!can_be_hit(target))
+        return
+
+    new Float:origin[3]
+    pev(target, pev_origin, origin)
+    explosion(origin)
+    stun(target)
+    send_hit("mk_stun", from, target, "blueshell")
+}
+
+// Blown up by a blue shell or bob-omb: a black screen, and frozen and spinning for 3 seconds
+stun(id)
+{
+    screen_fade(id, KART_STUN_TIME, 0, 0, 0, 255)
+    freeze_player(id, KART_STUN_TIME, false)
+    spin(id, KART_STUN_TIME, 3)
+    hop(id, 250.0)
+}
+
+// Slowed down for a while; the strongest slow wins
+slow_down(id, Float:speed, Float:seconds)
+{
+    new Float:now = get_gametime()
+    g_slowSpeed[id] = now < g_slowUntil[id] ? floatmin(g_slowSpeed[id], speed) : speed
+    g_slowUntil[id] = floatmax(g_slowUntil[id], now + seconds)
+    update_kart_speed(id, now)
+}
+
+// Bob-omb: lobbed forward a fixed distance, and goes off when it lands or hits someone,
+// blowing up everyone close by, teammates and the thrower too
+use_bobomb(id)
+{
+    new Float:origin[3], Float:ahead[3], Float:start[3]
+    pev(id, pev_origin, origin)
+    flat_forward(id, ahead)
+    for (new axis; axis < 2; axis++)
+        start[axis] = origin[axis] + ahead[axis] * 24.0
+    start[2] = origin[2] + 16.0
+    clip_to_world(id, origin, start, 8.0)
+
+    new bomb = create_kart_entity("nobel_bobomb", BOBOMB_MODEL, start, Float:{ -6.0, -6.0, -6.0 }, Float:{ 6.0, 6.0, 6.0 }, SOLID_BBOX, MOVETYPE_TOSS, id)
+    if (!bomb)
+        return
+
+    new Float:velocity[3]
+    velocity[0] = ahead[0] * KART_BOBOMB_SPEED
+    velocity[1] = ahead[1] * KART_BOBOMB_SPEED
+    velocity[2] = KART_BOBOMB_LIFT
+    set_pev(bomb, pev_velocity, velocity)
+    set_pev(bomb, pev_avelocity, Float:{ 300.0, 0.0, 0.0 })
+    set_pev(bomb, pev_iuser2, id)
+    set_pev(bomb, pev_fuser1, get_gametime() + KART_BOBOMB_FUSE)
+    glow(bomb, 255, 40, 0)
+}
+
+public on_bobomb_touch(bomb, id)
+{
+    bobomb_explode(bomb)
+}
+
+bobomb_explode(bomb)
+{
+    if (pev(bomb, pev_flags) & FL_KILLME)
+        return
+
+    new thrower = pev(bomb, pev_iuser2)
+    new Float:origin[3], Float:otherOrigin[3]
+    pev(bomb, pev_origin, origin)
+    kill_entity(bomb)
+    explosion(origin)
+
+    // The explosion's sound is mk_stun, the same as the blue shell's
+    new throwerId[MAX_AUTHID_LENGTH]
+    if (is_user_connected(thrower))
+        get_player_id(thrower, throwerId, charsmax(throwerId))
+    send_event("mk_boom", throwerId, "", "mk_stun")
+
+    new players[MAX_PLAYERS], num
+    get_players(players, num, "a")
+    for (new i; i < num; i++) {
+        new victim = players[i]
+        pev(victim, pev_origin, otherOrigin)
+        if (!is_racer_team(cs_get_user_team(victim)) || !can_be_hit(victim) || get_distance_f(origin, otherOrigin) > KART_BOBOMB_RADIUS)
+            continue
+        stun(victim)
+        send_hit("mk_bombed", thrower, victim, "bobomb")
+        if (victim != thrower)
+            add_money(thrower, KART_BOBOMB_HIT_MONEY)
+    }
+}
+
+// Fire flower: one fireball per press, straight ahead
+use_fireflower(id)
+{
+    new Float:origin[3], Float:ahead[3], Float:start[3]
+    pev(id, pev_origin, origin)
+    flat_forward(id, ahead)
+    for (new axis; axis < 2; axis++)
+        start[axis] = origin[axis] + ahead[axis] * 24.0
+    start[2] = origin[2]
+    clip_to_world(id, origin, start, 4.0)
+
+    new ball = create_kart_entity("nobel_fireball", FIREBALL_SPRITE, start, Float:{ -3.0, -3.0, -3.0 }, Float:{ 3.0, 3.0, 3.0 }, SOLID_BBOX, MOVETYPE_BOUNCEMISSILE, id)
+    if (!ball)
+        return
+
+    new Float:velocity[3]
+    velocity[0] = ahead[0] * KART_FIREBALL_SPEED
+    velocity[1] = ahead[1] * KART_FIREBALL_SPEED
+    set_pev(ball, pev_velocity, velocity)
+    set_pev(ball, pev_vuser1, ahead)
+    set_pev(ball, pev_fuser1, get_gametime() + KART_FIREBALL_LIFETIME)
+    set_pev(ball, pev_iuser2, id)
+    // Steered like a green shell, at its own speed (see steer_shell)
+    set_pev(ball, pev_iuser1, 1)
+    set_pev(ball, pev_fuser3, get_gametime() + 0.3)
+    set_pev(ball, pev_rendermode, kRenderTransAdd)
+    set_pev(ball, pev_renderamt, 255.0)
+    set_pev(ball, pev_scale, 0.4)
+    beam_follow(ball, 255, 90, 0)
+}
+
+public on_fireball_touch(ball, id)
+{
+    if (!is_user_alive(id))
+        return
+
+    new shooter = pev(ball, pev_iuser2)
+    kill_entity(ball)
+    if (!can_be_hit(id))
+        return
+
+    slow_down(id, KART_FIREBALL_SLOW_SPEED, KART_FIREBALL_SLOW_TIME)
+    screen_fade(id, 0.5, 255, 80, 0, 120)
+    hit_light(id, 255, 0, 0)
+
+    new health = get_user_health(id)
+    if (health > KART_FIREBALL_DAMAGE) {
+        set_user_health(id, health - KART_FIREBALL_DAMAGE)
+        send_hit("mk_hit", shooter, id, "fireflower", "mk_hit_fireflower")
+        if (shooter != id)
+            add_money(shooter, KART_FIREBALL_HIT_MONEY)
+    } else {
+        kart_kill(shooter, id, "grenade")
+    }
+}
+
+bool:can_be_hit(id)
+{
+    return is_user_alive(id) && g_raceStarted && !g_raceOver && get_gametime() >= g_starUntil[id]
+}
+
+// Hit by a banana, shell or star: a hop, and the view spins while frozen for a moment
+bool:spin_out(victim, attacker, const item[])
+{
+    if (!can_be_hit(victim))
+        return false
+
+    freeze_player(victim, KART_SPIN_TIME, false)
+    spin(victim, KART_SPIN_TIME, 2)
+    hop(victim, 200.0)
+    // Each item has its own hit sound (mk_hit_banana etc.), or the general mk_hit
+    new sound[32]
+    formatex(sound, charsmax(sound), "mk_hit_%s", item)
+    send_hit("mk_hit", attacker, victim, item, sound)
+    return true
+}
+
+// Turns the view around a number of times (see on_player_prethink)
+spin(id, Float:seconds, turns)
+{
+    new Float:angles[3]
+    pev(id, pev_v_angle, angles)
+    g_spinYaw[id] = angles[1]
+    g_spinTime[id] = seconds
+    g_spinTurn[id] = 360.0 * float(turns)
+    g_spinStart[id] = get_gametime()
+}
+
+// Turns a spinning player's view every frame, fast at first and slowing down,
+// ending where they were looking
+public on_player_prethink(id)
+{
+    if (g_spinStart[id] == 0.0)
+        return FMRES_IGNORED
+
+    new Float:t = (get_gametime() - g_spinStart[id]) / g_spinTime[id]
+    if (t >= 1.0 || !is_user_alive(id)) {
+        t = 1.0
+        g_spinStart[id] = 0.0
+    }
+
+    new Float:angles[3]
+    pev(id, pev_v_angle, angles)
+    angles[1] = g_spinYaw[id] + g_spinTurn[id] * (1.0 - (1.0 - t) * (1.0 - t))
+    set_pev(id, pev_angles, angles)
+    set_pev(id, pev_v_angle, angles)
+    set_pev(id, pev_fixangle, 1)
+    return FMRES_IGNORED
+}
+
+// A little knock into the air, lower than a jump (268), and only from the ground:
+// on top of a jump it lifts players onto invisible clip brushes they can then walk on
+hop(id, Float:speed)
+{
+    if (~pev(id, pev_flags) & FL_ONGROUND)
+        return
+
+    new Float:velocity[3]
+    pev(id, pev_velocity, velocity)
+    velocity[2] = speed
+    set_pev(id, pev_velocity, velocity)
+}
+
+// The victim drinks a sip (the web app counts it). `sound` picks another media
+// folder than the event's own.
+send_hit(const cmd[], attacker, victim, const item[], const sound[] = "")
+{
+    new attackerId[MAX_AUTHID_LENGTH], victimId[MAX_AUTHID_LENGTH]
+    get_player_id(victim, victimId, charsmax(victimId))
+    if (is_user_connected(attacker))
+        get_player_id(attacker, attackerId, charsmax(attackerId))
+    else
+        copy(attackerId, charsmax(attackerId), victimId)
+    send_event(cmd, attackerId, victimId, sound, item)
+    refresh_player_stats_soon()
+}
+
+// Item boxes come back a while after they're taken and cycle through the rainbow;
+// blue shells home in, and green shells keep going until they expire
+update_kart_entities(Float:now)
+{
+    new ent = -1, Float:respawn
+    while ((ent = find_ent_by_class(ent, "nobel_itembox"))) {
+        pev(ent, pev_fuser1, respawn)
+        if (respawn > 0.0 && now >= respawn) {
+            new Float:origin[3]
+            pev(ent, pev_origin, origin)
+            set_pev(ent, pev_fuser1, 0.0)
+            set_pev(ent, pev_effects, pev(ent, pev_effects) & ~EF_NODRAW)
+            set_pev(ent, pev_solid, SOLID_TRIGGER)
+            engfunc(EngFunc_SetOrigin, ent, origin)
+        }
+        if (g_kartTicks % 3 == 0) {
+            new color = (g_kartTicks / 3 + ent) % sizeof RAINBOW
+            glow(ent, RAINBOW[color][0], RAINBOW[color][1], RAINBOW[color][2])
+        }
+    }
+
+    ent = -1
+    while ((ent = find_ent_by_class(ent, "nobel_blueshell")))
+        steer_blueshell(ent, now)
+
+    // Bob-ombs blink, and go off when they land or their fuse runs out
+    new Float:fuse
+    ent = -1
+    while ((ent = find_ent_by_class(ent, "nobel_bobomb"))) {
+        pev(ent, pev_fuser1, fuse)
+        if (pev(ent, pev_flags) & FL_ONGROUND || now >= fuse)
+            bobomb_explode(ent)
+        else if (g_kartTicks % 2)
+            glow(ent, 255, 40, 0)
+        else
+            glow(ent, 60, 60, 60)
+    }
+
+    ent = -1
+    while ((ent = find_ent_by_class(ent, "nobel_fireball"))) {
+        pev(ent, pev_fuser1, fuse)
+        if (now >= fuse)
+            kill_entity(ent)
+        else
+            steer_shell(ent, now)
+    }
+
+    new Float:expires
+    ent = -1
+    while ((ent = find_ent_by_class(ent, "nobel_shell"))) {
+        pev(ent, pev_fuser1, expires)
+        if (now >= expires)
+            kill_entity(ent)
+        else
+            steer_shell(ent, now)
+    }
+}
+
+// Item boxes go where players have stood on this map, KART_BOX_SPACING apart all
+// over it, and away from both spawns. Weapon spawns fill in on maps with few
+// recorded spots.
+place_item_boxes()
+{
+    new Array:candidates = ArrayCreate(3)
+    new Float:spot[3]
+    for (new i, count = ArraySize(g_spots); i < count; i++) {
+        ArrayGetArray(g_spots, i, spot)
+        if (away_from_spawns(spot))
+            ArrayPushArray(candidates, spot)
+    }
+
+    if (ArraySize(candidates) < KART_BOXES / 2) {
+        new ent = -1
+        while ((ent = find_ent_by_class(ent, "armoury_entity"))) {
+            pev(ent, pev_origin, spot)
+            spot[2] += 16.0
+            if (away_from_spawns(spot))
+                ArrayPushArray(candidates, spot)
+        }
+    }
+
+    new Float:placed[KART_BOXES][3], num
+    while (num < KART_BOXES && ArraySize(candidates)) {
+        new pick = random(ArraySize(candidates))
+        ArrayGetArray(candidates, pick, spot)
+        ArrayDeleteItem(candidates, pick)
+
+        new bool:crowded
+        for (new i; i < num && !crowded; i++)
+            crowded = get_distance_f(spot, placed[i]) < KART_BOX_SPACING
+
+        if (crowded)
+            continue
+
+        new box = create_kart_entity("nobel_itembox", g_itemboxModel, spot, Float:{ -16.0, -16.0, -16.0 }, Float:{ 16.0, 16.0, 16.0 }, SOLID_TRIGGER, MOVETYPE_NOCLIP, 0)
+        if (!box)
+            break
+        set_pev(box, pev_avelocity, Float:{ 0.0, 120.0, 0.0 })
+        glow(box, 255, 255, 255)
+        copy_vector(spot, placed[num++])
+    }
+    ArrayDestroy(candidates)
+
+    if (!num)
+        client_print(0, print_chat, "No item boxes on this map yet: they go where players have been, so play a normal round first.")
+    log_amx("Mario Kart: %d item boxes (%d spots recorded on %s)", num, ArraySize(g_spots), g_mapName)
+}
+
+bool:away_from_spawns(const Float:spot[3])
+{
+    for (new CsTeams:team = CS_TEAM_T; team <= CS_TEAM_CT; team++) {
+        if (g_hasFinish[team] && get_distance_f(spot, g_finish[team]) < g_finishRadius[team] + 150.0)
+            return false
+    }
+    return true
+}
+
+create_kart_entity(const classname[], const model[], const Float:origin[3], const Float:mins[3], const Float:maxs[3], solid, movetype, owner)
+{
+    new ent = create_entity("info_target")
+    if (!ent)
+        return 0
+
+    set_pev(ent, pev_classname, classname)
+    engfunc(EngFunc_SetModel, ent, model)
+    engfunc(EngFunc_SetSize, ent, mins, maxs)
+    set_pev(ent, pev_solid, solid)
+    set_pev(ent, pev_movetype, movetype)
+    set_pev(ent, pev_owner, owner)
+    engfunc(EngFunc_SetOrigin, ent, origin)
+    return ent
+}
+
+// Removes an entity safely from inside its own touch
+kill_entity(ent)
+{
+    kill_trail(ent)
+    set_pev(ent, pev_solid, SOLID_NOT)
+    set_pev(ent, pev_effects, pev(ent, pev_effects) | EF_NODRAW)
+    set_pev(ent, pev_flags, pev(ent, pev_flags) | FL_KILLME)
+}
+
+// Where the player is looking, level with the ground
+flat_forward(id, Float:ahead[3])
+{
+    new Float:angles[3]
+    pev(id, pev_v_angle, angles)
+    angles[0] = 0.0
+    angle_vector(angles, ANGLEVECTOR_FORWARD, ahead)
+}
+
+// Moves `to` back from any wall between `from` and it, by `margin`
+clip_to_world(id, const Float:from[3], Float:to[3], Float:margin)
+{
+    new Float:hit[3]
+    trace_line(id, from, to, hit)
+    new Float:length = get_distance_f(from, hit)
+    new Float:full = get_distance_f(from, to)
+    if (full < 1.0)
+        return
+
+    new Float:scale = floatmax(0.0, length - margin) / full
+    for (new axis; axis < 3; axis++)
+        to[axis] = from[axis] + (to[axis] - from[axis]) * scale
+}
+
+// ----------------------------------------------------------------------------
+// Mario Kart effects
+// ----------------------------------------------------------------------------
+
+set_trail(id, Float:until, r, g, b)
+{
+    kill_trail(id)
+    beam_follow(id, r, g, b)
+    g_trailUntil[id] = until
+}
+
+beam_follow(ent, r, g, b)
+{
+    message_begin(MSG_BROADCAST, SVC_TEMPENTITY)
+    write_byte(TE_BEAMFOLLOW)
+    write_short(ent)
+    write_short(g_sprBeam)
+    write_byte(10) // life: 1 second
+    write_byte(8) // width
+    write_byte(r)
+    write_byte(g)
+    write_byte(b)
+    write_byte(200) // brightness
+    message_end()
+}
+
+// A colored light around the player for one tick, lighting up their own knife and
+// the ground around them
+boost_light(id, r, g, b)
+{
+    dynamic_light(id, r, g, b, 14, 2, 0)
+}
+
+// A flash of colored light around a player who was hit, fading out
+hit_light(id, r, g, b)
+{
+    dynamic_light(id, r, g, b, 20, 5, 40)
+}
+
+// radius in tens of units, life in tenths of a second, decay in units per second / 10
+dynamic_light(id, r, g, b, radius, life, decay)
+{
+    new Float:origin[3]
+    pev(id, pev_origin, origin)
+    message_begin(MSG_BROADCAST, SVC_TEMPENTITY)
+    write_byte(TE_DLIGHT)
+    write_coord(floatround(origin[0]))
+    write_coord(floatround(origin[1]))
+    write_coord(floatround(origin[2]))
+    write_byte(radius)
+    write_byte(r)
+    write_byte(g)
+    write_byte(b)
+    write_byte(life)
+    write_byte(decay)
+    message_end()
+}
+
+kill_trail(ent)
+{
+    message_begin(MSG_BROADCAST, SVC_TEMPENTITY)
+    write_byte(TE_KILLBEAM)
+    write_short(ent)
+    message_end()
+}
+
+// A bolt from the ceiling (or the sky) down onto the player
+lightning_bolt(id)
+{
+    new Float:origin[3], Float:top[3], Float:hit[3]
+    pev(id, pev_origin, origin)
+    copy_vector(origin, top)
+    top[2] += 1000.0
+    trace_line(id, origin, top, hit)
+
+    message_begin(MSG_BROADCAST, SVC_TEMPENTITY)
+    write_byte(TE_BEAMPOINTS)
+    write_coord(floatround(hit[0]))
+    write_coord(floatround(hit[1]))
+    write_coord(floatround(hit[2]))
+    write_coord(floatround(origin[0]))
+    write_coord(floatround(origin[1]))
+    write_coord(floatround(origin[2] - 36.0))
+    write_short(g_sprLightning)
+    write_byte(0) // start frame
+    write_byte(10) // frame rate
+    write_byte(4) // life: 0.4 seconds
+    write_byte(60) // width
+    write_byte(40) // noise
+    write_byte(255)
+    write_byte(255)
+    write_byte(160)
+    write_byte(255) // brightness
+    write_byte(0) // scroll speed
+    message_end()
+}
+
+// A silent explosion and a blue shockwave (the sound comes from the web app)
+explosion(const Float:origin[3])
+{
+    message_begin(MSG_BROADCAST, SVC_TEMPENTITY)
+    write_byte(TE_EXPLOSION)
+    write_coord(floatround(origin[0]))
+    write_coord(floatround(origin[1]))
+    write_coord(floatround(origin[2]))
+    write_short(g_sprExplosion)
+    write_byte(30) // scale
+    write_byte(15) // frame rate
+    write_byte(TE_EXPLFLAG_NOSOUND)
+    message_end()
+
+    message_begin(MSG_BROADCAST, SVC_TEMPENTITY)
+    write_byte(TE_BEAMCYLINDER)
+    write_coord(floatround(origin[0]))
+    write_coord(floatround(origin[1]))
+    write_coord(floatround(origin[2] - 30.0))
+    write_coord(floatround(origin[0]))
+    write_coord(floatround(origin[1]))
+    write_coord(floatround(origin[2] + 300.0))
+    write_short(g_sprRing)
+    write_byte(0) // start frame
+    write_byte(0) // frame rate
+    write_byte(6) // life
+    write_byte(30) // width
+    write_byte(0) // noise
+    write_byte(0)
+    write_byte(80)
+    write_byte(255)
+    write_byte(220) // brightness
+    write_byte(0) // speed
+    message_end()
+}
+
+// The screen starts in a color and fades back to normal
+screen_fade(id, Float:seconds, r, g, b, alpha)
+{
+    message_begin(MSG_ONE, g_msgScreenFade, _, id)
+    write_short(min(floatround(seconds * 4096.0), 0xFFFF)) // duration
+    write_short(0) // hold time
+    write_short(0x0000) // FFADE_IN
+    write_byte(r)
+    write_byte(g)
+    write_byte(b)
+    write_byte(alpha)
+    message_end()
+}
+
+// ----------------------------------------------------------------------------
+// Item box spots: where players stand during normal play, saved per map
+// ----------------------------------------------------------------------------
+
+public task_record_spots()
+{
+    if (!g_enabled || ArraySize(g_spots) >= MAX_SPOTS)
+        return
+
+    new players[MAX_PLAYERS], num
+    get_players(players, num, "a")
+    for (new i; i < num; i++) {
+        new id = players[i]
+        new flags = pev(id, pev_flags)
+        new ground = pev(id, pev_groundentity)
+        // On solid ground, standing up: not in a vent, on a ladder, in water or on someone's head
+        if (~flags & FL_ONGROUND || flags & FL_DUCKING || pev(id, pev_waterlevel) || pev(id, pev_movetype) == MOVETYPE_FLY
+            || (1 <= ground <= MAX_PLAYERS))
+            continue
+
+        // A box's middle, 20 units above the floor
+        new Float:spot[3]
+        pev(id, pev_origin, spot)
+        spot[2] -= 20.0
+        if (!near_spot(spot)) {
+            ArrayPushArray(g_spots, spot)
+            g_spotsChanged = true
+        }
+    }
+}
+
+bool:near_spot(const Float:spot[3])
+{
+    new Float:other[3]
+    for (new i, count = ArraySize(g_spots); i < count; i++) {
+        ArrayGetArray(g_spots, i, other)
+        if (get_distance_f(spot, other) < SPOT_SPACING)
+            return true
+    }
+    return false
+}
+
+spots_file(path[], len)
+{
+    get_datadir(path, len)
+    format(path, len, "%s/%s", path, SPOTS_DIR)
+    if (!dir_exists(path))
+        mkdir(path)
+    format(path, len, "%s/%s.txt", path, g_mapName)
+}
+
+load_spots()
+{
+    g_spots = ArrayCreate(3)
+
+    new path[PLATFORM_MAX_PATH]
+    spots_file(path, charsmax(path))
+    new file = fopen(path, "rt")
+    if (!file)
+        return
+
+    new line[64], x[16], y[16], z[16], Float:spot[3]
+    while (fgets(file, line, charsmax(line)) && ArraySize(g_spots) < MAX_SPOTS) {
+        if (parse(line, x, charsmax(x), y, charsmax(y), z, charsmax(z)) < 3)
+            continue
+        spot[0] = str_to_float(x)
+        spot[1] = str_to_float(y)
+        spot[2] = str_to_float(z)
+        ArrayPushArray(g_spots, spot)
+    }
+    fclose(file)
+}
+
+save_spots()
+{
+    if (!g_spotsChanged)
+        return
+
+    new path[PLATFORM_MAX_PATH]
+    spots_file(path, charsmax(path))
+    new file = fopen(path, "wt")
+    if (!file) {
+        log_amx("Could not save item box spots to %s", path)
+        return
+    }
+
+    new Float:spot[3]
+    for (new i, count = ArraySize(g_spots); i < count; i++) {
+        ArrayGetArray(g_spots, i, spot)
+        fprintf(file, "%.0f %.0f %.0f\n", spot[0], spot[1], spot[2])
+    }
+    fclose(file)
+    g_spotsChanged = false
+}
+
+// ----------------------------------------------------------------------------
 // Kills
 // ----------------------------------------------------------------------------
 
@@ -1169,6 +3068,10 @@ public on_death()
 
     remove_task(TASK_RAMBO + victim)
     refresh_player_stats_soon()
+
+    // Nobody can be killed in the Mario Kart round: these are the losers of the race
+    if (g_mode == MODE_KART)
+        return
 
     new bool:suicide = killer == victim || !killer
     new bool:knifed = bool:equal(weapon, "knife")
@@ -1303,6 +3206,13 @@ create_pause_menu()
         menu_addblank2(g_pauseMenu)
     menu_additem(g_pauseMenu, "Unpause")
     menu_setprop(g_pauseMenu, MPROP_PERPAGE, 0)
+
+    g_kartPauseMenu = menu_create("MARIO KART IS OVER", "kart_pause_menu_handler")
+    for (new i; i < 8; i++)
+        menu_addblank2(g_kartPauseMenu)
+    menu_additem(g_kartPauseMenu, "End Mario Kart")
+    menu_additem(g_kartPauseMenu, "Race again")
+    menu_setprop(g_kartPauseMenu, MPROP_PERPAGE, 0)
 }
 
 public pause_menu_handler(id, menu, item)
@@ -1311,6 +3221,25 @@ public pause_menu_handler(id, menu, item)
         log_admin(id, "unpaused the game")
         unpause_game()
     }
+    return PLUGIN_HANDLED
+}
+
+// 9: back to normal rounds from the next one; 0: Mario Kart again
+public kart_pause_menu_handler(id, menu, item)
+{
+    if (!g_paused || item != 8 && item != 9)
+        return PLUGIN_HANDLED
+
+    if (item == 8 && g_mode == MODE_KART) {
+        log_admin(id, "ended the %s", MODE_NAME[MODE_KART])
+        g_endModeAfterRound = true
+        // Before the next round starts, which reads the round time
+        restore_kart_cvars()
+        client_print(0, print_chat, "That was the last %s!", MODE_NAME[MODE_KART])
+    } else {
+        log_admin(id, "unpaused the game")
+    }
+    unpause_game()
     return PLUGIN_HANDLED
 }
 
@@ -1394,8 +3323,11 @@ public client_command(id)
         g_pausableBefore = -1
     }
 
-    if (g_setting[SET_PAUSE])
+    if (g_setting[SET_PAUSE] || g_mode == MODE_KART)
         show_pause_menu(g_paused)
+
+    if (!g_paused)
+        g_kartEndPause = false
 
     return PLUGIN_CONTINUE
 }
@@ -1409,7 +3341,7 @@ show_pause_menu(bool:show)
             continue
 
         if (show)
-            menu_display(players[i], g_pauseMenu)
+            menu_display(players[i], g_kartEndPause ? g_kartPauseMenu : g_pauseMenu)
         else
             show_menu(players[i], 0, " ", 0)
     }
@@ -1898,6 +3830,8 @@ public cmd_round_mode(id, level, cid)
     if (g_mode == MODE_NORMAL && g_nextMode == MODE_NORMAL) {
         g_nextMode = mode
         g_endModeAfterRound = false
+        if (mode == MODE_KART)
+            set_kart_cvars()
         log_admin(id, "queued a %s for next round", MODE_NAME[mode])
         announce_mode_queued(mode)
         client_print(0, print_chat, "Nobel %s enabled!", MODE_NAME[mode])
