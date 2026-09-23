@@ -12,26 +12,27 @@ const ITEMS = [
 
 <template>
   <div v-if="highlights" class="highlights">
-    <div v-for="[ key, label ] in ITEMS" :key="key" class="highlight">
-      <div class="label">{{ label }}</div>
-      <template v-if="highlights[key]">
+    <!-- Only stats someone actually has -->
+    <template v-for="[ key, label ] in ITEMS" :key="key">
+      <div v-if="highlights[key]" class="highlight">
+        <div class="label">{{ label }}</div>
         <div class="value">{{ highlights[key].value }}</div>
         <div class="names" :title="highlights[key].names.join(' & ')">{{ highlights[key].names.join(' & ') }}</div>
-      </template>
-      <div v-else class="value none">–</div>
-    </div>
+      </div>
+    </template>
   </div>
 </template>
 
 <style scoped>
 .highlights {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  display: flex;
   gap: 1rem;
   margin-bottom: 2rem;
 }
 
 .highlight {
+  flex: 1 1 0;
+  min-width: 0;
   padding: .9rem 1.2rem;
   border: 1px solid rgb(255 255 255 / 12%);
   border-radius: .5rem;
@@ -49,10 +50,6 @@ const ITEMS = [
   font-weight: 700;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
-}
-
-.value.none {
-  color: rgb(255 255 255 / 30%);
 }
 
 .names {

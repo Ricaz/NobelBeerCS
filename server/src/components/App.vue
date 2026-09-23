@@ -446,7 +446,8 @@ export default {
             <div class="track" :class="{ 'show-all': mode === 'all', animate }">
               <section class="page" :inert="mode !== 'lan'">
                 <Transition :css="false" @enter="(el, done) => animateLanStats(el, done, true)" @leave="(el, done) => animateLanStats(el, done, false)">
-                  <div v-if="state === 'ended'" class="lan-stats">
+                  <!-- Waits while the end-of-map awards are shown with the final scoreboard -->
+                  <div v-if="state === 'ended' && !awards" class="lan-stats">
                     <Highlights :highlights="stats.lanHighlights" />
                     <div class="row w-100">
                       <div v-if="sessionScores.show" class="scores-session pb-5 col-6">
@@ -480,7 +481,9 @@ export default {
   </div>
   <Overlay ref="overlay" :overlay="overlay" />
   <KillFeed ref="killfeed" :paused="paused" />
-  <AwardsBar v-if="awards?.length" :awards="awards" />
+  <Transition name="awards-fade">
+    <AwardsBar v-if="awards?.length" :awards="awards" />
+  </Transition>
 </template>
 
 <style>
@@ -574,6 +577,15 @@ export default {
 .modes select.concealed {
   opacity: 0;
   visibility: hidden;
+}
+
+/* End-of-map awards fade out when their time is up */
+.awards-fade-leave-active {
+  transition: opacity 1s;
+}
+
+.awards-fade-leave-to {
+  opacity: 0;
 }
 
 /* Two pages side by side in a track twice the page width */

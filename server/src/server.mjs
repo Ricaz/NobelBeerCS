@@ -174,10 +174,11 @@ ws.on('connection', (conn, req) => {
 	conn.send(JSON.stringify(fullState))
 
 	log.ws(`Sending state '${tracker.state}' and stats`)
-	conn.send(JSON.stringify({ cmd: 'state', data: tracker.state }))
+	// Awards first: while they're shown, the page keeps the final scoreboard up
 	const awards = tracker.currentAwards()
 	if (awards)
 		conn.send(JSON.stringify({ cmd: 'awards', data: awards }))
+	conn.send(JSON.stringify({ cmd: 'state', data: tracker.state }))
 	const stats = tracker.generateStats()
 	if (stats)
 		conn.send(JSON.stringify({ cmd: 'stats', data: stats }))

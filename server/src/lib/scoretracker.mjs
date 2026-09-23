@@ -61,7 +61,7 @@ function awards(scores) {
 	const pick = (title, description, value, format = (v) => v, lowest = false) => {
 		const values = players.map(value)
 		const best = lowest ? Math.min(...values) : Math.max(...values)
-		if (!players.length || (!lowest && best <= 0))
+		if (!players.length || best <= 0)
 			return null
 		const names = players.filter((p) => value(p) === best).map((p) => p.name)
 		return { title, description, names, value: format(best) }
@@ -69,15 +69,14 @@ function awards(scores) {
 	const beers = (sips) => `${(sips / SIPS_PER_BEER).toFixed(1)} øl`
 
 	return [
-		pick('Beer king', 'Most øls', (p) => p.sips, beers),
-		pick('Sharpshooter', 'Best K/D', (p) => p.kills ? kd(p) : 0, (v) => v.toFixed(2)),
-		pick('Butcher', 'Most kills', (p) => p.kills),
-		pick('Knife master', 'Most knife kills', (p) => p.knifekills),
-		pick('Pincushion', 'Most knifed', (p) => p.knifed),
-		pick('Friendly fire', 'Most teamkills', (p) => p.teamkills),
-		pick('Kamikaze', 'Most suicides', (p) => p.suicides),
-		pick('Cannon fodder', 'Most deaths', (p) => p.deaths),
-		pick('Designated driver', 'Fewest øls', (p) => p.sips, beers, true),
+		pick('Ølsfatter', 'Most øls', (p) => p.sips, beers),
+		pick('Forhåbentlig stiv tryhard', 'Best K/D', (p) => p.kills ? kd(p) : 0, (v) => v.toFixed(2)),
+		pick('Top Leif', 'Most knife kills', (p) => p.knifekills),
+		pick('Leifs favorit', 'Most knifed', (p) => p.knifed),
+		pick('Britney, bitch', 'Most teamkills', (p) => p.teamkills),
+		pick('Parkour er pisse svært', 'Most suicides', (p) => p.suicides),
+		pick('Spectator', 'Most deaths', (p) => p.deaths),
+		pick('Skal køre hjem', 'Fewest øls', (p) => p.sips, beers, true),
 	].filter(Boolean)
 }
 
