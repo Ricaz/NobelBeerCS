@@ -7,6 +7,20 @@ const COOLDOWN_EVENTS = [ 'grenade' ]
 const SHAME_WINDOW = 3000
 const KILL_EVENTS = [ 'kill', 'headshot', 'knife', 'grenade', 'tk', 'suicide', 'kniferound', 'bong' ]
 
+// A 10 ms silent WAV file, for testing whether the browser allows sound
+function silentWav() {
+  const samples = 80, header = 44
+  const view = new DataView(new ArrayBuffer(header + samples))
+  const text = (offset, s) => [ ...s ].forEach((c, i) => view.setUint8(offset + i, c.charCodeAt(0)))
+  text(0, 'RIFF'); view.setUint32(4, header - 8 + samples, true); text(8, 'WAVE')
+  text(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true)
+  view.setUint32(24, 8000, true); view.setUint32(28, 8000, true); view.setUint16(32, 1, true); view.setUint16(34, 8, true)
+  text(36, 'data'); view.setUint32(40, samples, true)
+  for (let i = 0; i < samples; i++)
+    view.setUint8(header + i, 128) // 8-bit silence
+  return URL.createObjectURL(new Blob([ view ], { type: 'audio/wav' }))
+}
+
 function board(title, headers, scores, show) {
   return { title, headers, scores, show: show && scores.length > 0 }
 }
@@ -38,6 +52,8 @@ export default {
       finalScores: null,
       // Bumped on every game start to show the "LIVE LIVE LIVE" banner (0 = hidden)
       liveBanner: 0,
+      // The browser won't play sound until someone clicks or presses a key on the page
+      soundBlocked: false,
       socket: null,
       // 'lan': the active LAN (live scoreboard or LAN stats), 'all': all-time stats
       mode: 'all',
@@ -79,6 +95,10 @@ export default {
 
   mounted() {
     this.connectWebSocket()
+    this.checkSound()
+    // Any click or key press lets the browser play sound; check again then
+    for (const event of [ 'pointerdown', 'keydown' ])
+      window.addEventListener(event, () => { if (this.soundBlocked) this.checkSound() })
   },
 
   methods: {
@@ -407,7 +427,7 @@ export default {
       if (soundTypes.includes(ext))
         this.playSound(file)
       else if (videoTypes.includes(ext))
-        this.$refs.overlay.playVideo(file)
+        this.$refs.overlay.playVideo(file).catch(this.onPlayError)
       else
         console.log(`Could not determine if "${ext}" is sound or video.`)
     },
@@ -418,8 +438,26 @@ export default {
       audio.addEventListener('ended', () => {
         this.audioElements = this.audioElements.filter((a) => a !== audio)
       })
-      audio.play().catch((e) => console.log(`Could not play "${path}": ${e}`))
+      audio.play().catch((e) => {
+        this.onPlayError(e)
+        console.log(`Could not play "${path}": ${e}`)
+      })
       this.audioElements.push(audio)
+    },
+
+    // The browser refuses to play sound until the user has interacted with the page
+    onPlayError: function (e) {
+      if (e?.name === 'NotAllowedError')
+        this.soundBlocked = true
+    },
+
+    // Tries to play a short silent sound (not muted: muted media is always allowed)
+    checkSound: function () {
+      const audio = new Audio(silentWav())
+      audio.volume = 0
+      audio.play()
+        .then(() => { this.soundBlocked = false; audio.pause() })
+        .catch(this.onPlayError)
     },
 
     stopSound: function () {
@@ -447,10 +485,13 @@ export default {
           <!-- Status and volume left, LAN dropdown centered, buttons on the right -->
           <nav class="modes" aria-label="Stats">
             <!-- Status and volume on three compact lines -->
+            <!-- Labels and values in two columns, so the values line up -->
             <div class="status">
-              <div>Connection: <span class="value">{{ status }}</span></div>
-              <div>State: <span class="value">{{ state }}</span></div>
-              <label class="volume">Volume: <input class="slider" type="range" ref="volume" step="1" min="0" max="100" v-model="volume" v-on:change="volumeChange" /></label>
+              <span>Connection:</span><span class="value">{{ status }}</span>
+              <span>State:</span><span class="value">{{ state }}</span>
+              <label for="volume">Volume:</label>
+              <span v-if="soundBlocked" class="value sound-blocked" role="alert">Interact with page to enable sounds</span>
+              <input v-else id="volume" class="slider" type="range" ref="volume" step="1" min="0" max="100" v-model="volume" v-on:change="volumeChange" />
             </div>
             <!-- Only shown on All stats -->
             <select id="lan-select" class="form-select" :class="{ concealed: mode !== 'all' }" aria-label="Show stats for" :value="selectedLan" :disabled="loadingAll" @change="selectLan">
@@ -518,10 +559,37 @@ export default {
 }
 
 .status {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  column-gap: .6rem;
+  align-items: center;
   font-family: monospace;
   font-size: .8rem;
   line-height: 1.5;
   color: rgb(255 255 255 / 40%);
+}
+
+.status label {
+  margin: 0;
+}
+
+/* Shown instead of the volume slider until the browser lets the page play sound */
+.sound-blocked {
+  color: rgb(255 200 0) !important;
+  font-weight: 700;
+  cursor: pointer;
+  animation: blink 1s ease-in-out infinite alternate;
+}
+
+@keyframes blink {
+  from { opacity: 1; }
+  to { opacity: .25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sound-blocked {
+    animation: none;
+  }
 }
 
 .status .value {
@@ -713,12 +781,7 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
-.volume {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  margin: 0;
-}
+
 
 /* Slim slider that fits on a line of status text */
 .slider {

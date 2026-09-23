@@ -8,9 +8,13 @@ const video = ref(null)
 const playVideo = function(path) {
   video.value.classList.remove('hidden')
   video.value.src = path
-  // Rejected when the next video interrupts this one, which is fine
-  video.value.play().catch(() => {})
   console.log(`Overlay video: "${path}"`)
+  // Rejected when the next video interrupts this one, which is fine; blocked
+  // playback (no user interaction yet) is passed on
+  return video.value.play().catch((e) => {
+    if (e.name === 'NotAllowedError')
+      throw e
+  })
 }
 
 const stopVideo = function() {
