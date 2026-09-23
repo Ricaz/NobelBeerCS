@@ -244,6 +244,7 @@ public plugin_init()
     register_concmd("nobel_maps", "cmd_nobel_maps", ACCESS_PUBLIC, "Lists available maps on the server.")
     register_concmd("nobel_theme", "cmd_nobel_theme", ACCESS_ADMIN, "<theme> - Change sound theme.")
     register_concmd("nobel_knife_now", "cmd_nobel_end_mode_now", ACCESS_ADMIN, "End the current special round immediately.")
+    register_concmd("nobel_teleswapnow", "cmd_nobel_teleswapnow", ACCESS_ADMIN, "[player] [player] - Teleswap now: two named players, or a random T and CT.")
     register_concmd("nobel_shuffle", "cmd_nobel_shuffle", ACCESS_ADMIN, "Shuffles all players.")
     register_concmd("nobel_balance", "cmd_nobel_balance", ACCESS_ADMIN, "<games> - Rebalance teams based on each player's last N games.")
     register_concmd("nobel_sendplayers", "cmd_nobel_sendplayers", ACCESS_ADMIN, "Sends list of players to webserver")
@@ -733,16 +734,25 @@ public on_round_start()
 
 public task_teleswap()
 {
-    if (!g_enabled || !g_setting[SET_TELESWAP] || g_paused)
-        return
+    if (g_enabled && g_setting[SET_TELESWAP] && !g_paused)
+        random_teleswap()
+}
 
+// Swaps a random living T and CT. Returns false if a team has nobody alive.
+bool:random_teleswap()
+{
     new ts[MAX_PLAYERS], cts[MAX_PLAYERS], numT, numCT
     get_game_players(ts, numT, "ae", "TERRORIST")
     get_game_players(cts, numCT, "ae", "CT")
     if (!numT || !numCT)
-        return
+        return false
 
-    new first = ts[random(numT)], second = cts[random(numCT)]
+    teleswap_players(ts[random(numT)], cts[random(numCT)])
+    return true
+}
+
+teleswap_players(first, second)
+{
     teleswap(first, second)
 
     new firstId[MAX_AUTHID_LENGTH], secondId[MAX_AUTHID_LENGTH]
@@ -1899,6 +1909,35 @@ public cmd_nobel_maps(id, level, cid)
     } while (next_file(dir, file, charsmax(file)))
     close_dir(dir)
 
+    return PLUGIN_HANDLED
+}
+
+public cmd_nobel_teleswapnow(id, level, cid)
+{
+    if (!cmd_access(id, level, cid, 1) || !g_enabled)
+        return PLUGIN_HANDLED
+
+    if (read_argc() < 3) {
+        log_admin(id, "triggered a teleswap")
+        if (!random_teleswap())
+            console_print(id, "Nobody to swap: both teams need a living player.")
+        return PLUGIN_HANDLED
+    }
+
+    new name[32], first, second
+    read_argv(1, name, charsmax(name))
+    first = cmd_target(id, name, CMDTARGET_ONLY_ALIVE | CMDTARGET_ALLOW_SELF)
+    read_argv(2, name, charsmax(name))
+    second = cmd_target(id, name, CMDTARGET_ONLY_ALIVE | CMDTARGET_ALLOW_SELF)
+    if (!first || !second)
+        return PLUGIN_HANDLED
+    if (first == second) {
+        console_print(id, "Pick two different players.")
+        return PLUGIN_HANDLED
+    }
+
+    log_admin(id, "teleswapped %n and %n", first, second)
+    teleswap_players(first, second)
     return PLUGIN_HANDLED
 }
 

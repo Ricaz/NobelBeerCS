@@ -74,6 +74,7 @@ All the commands are toggleable.
 * Teleswap (`nobel_teleswap`, off by default)
   * Each round has a 20% chance that a random T and CT swap places (at least 30 seconds in),
     with a short flash and a sound
+  * `nobel_teleswapnow [player] [player]` swaps two players right away (a random T and CT without names)
 * Autobalance (`nobel_balance <games>`, runs automatically with `nobel_start`)
   * Rates each player by kills/deaths over their own last `<games>` games (50 by default)
   * Picks a random split among the ones where the teams' average ratings are within 3%,
