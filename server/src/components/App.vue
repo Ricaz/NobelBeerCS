@@ -59,8 +59,8 @@ export default {
     allScores() {
       return board(null, [ "Name (last seen)", ...STATS_HEADERS.slice(1) ], neutral(this.allStats), true)
     },
-    todayScores() {
-      return board("Stats for today", STATS_HEADERS, neutral(this.stats.today), this.state === 'ended')
+    sessionScores() {
+      return board("Stats for last session", STATS_HEADERS, neutral(this.stats.session), this.state === 'ended')
     },
     lanScores() {
       return board("Stats for this LAN", STATS_HEADERS, neutral(this.stats.lan), this.state === 'ended')
@@ -266,7 +266,7 @@ export default {
 
       const collapse = el.animate(frames({ height: `${el.offsetHeight}px` }, { height: '0px' }), timing)
       el.querySelector('.highlights')?.animate(frames({ transform: 'none', opacity: 1 }, { transform: 'translateY(-40px)', opacity: 0 }), timing)
-      el.querySelector('.scores-today')?.animate(frames({ transform: 'none' }, { transform: 'translateX(-100%)' }), timing)
+      el.querySelector('.scores-session')?.animate(frames({ transform: 'none' }, { transform: 'translateX(-100%)' }), timing)
       el.querySelector('.scores-lan')?.animate(frames({ transform: 'none' }, { transform: 'translateX(100%)' }), timing)
 
       collapse.onfinish = () => {
@@ -426,8 +426,8 @@ export default {
                   <div v-if="state === 'ended'" class="lan-stats">
                     <Highlights :highlights="stats.lanHighlights" />
                     <div class="row w-100">
-                      <div v-if="todayScores.show" class="scores-today pb-5 col-6">
-                        <Scoreboard :scoreboard="todayScores.scores" :title="todayScores.title" :headers="todayScores.headers" />
+                      <div v-if="sessionScores.show" class="scores-session pb-5 col-6">
+                        <Scoreboard :scoreboard="sessionScores.scores" :title="sessionScores.title" :headers="sessionScores.headers" />
                       </div>
                       <div v-if="lanScores.show" class="scores-lan pb-5 col-6">
                         <Scoreboard :scoreboard="lanScores.scores" :title="lanScores.title" :headers="lanScores.headers" />
@@ -594,7 +594,7 @@ export default {
   background-color: rgb(0 0 0 / 0%);
 }
 
-.scores-today .table td, .scores-today .table th, .scores-lan .table td, .scores-lan .table th {
+.scores-session .table td, .scores-session .table th, .scores-lan .table td, .scores-lan .table th {
   font-size: 1.25rem;
 }
 

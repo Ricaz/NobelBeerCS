@@ -20,9 +20,9 @@ const RATING_PRIOR = 20
 // as active until LAN_ACTIVE_FOR after its latest game started
 const LAN_GAP = 3 * 86400 * 1000
 const LAN_ACTIVE_FOR = 30 * 3600 * 1000
-// "Today" starts at this hour (server time, 24-hour clock: 12 = noon). We play from
-// ~21:00 into the morning, so a whole night counts as one day.
-const DAY_STARTS_AT = 12
+// A session is a run of games with less than this between them (e.g. one night);
+// a longer break starts a new session
+const SESSION_GAP = 6 * 3600 * 1000
 // Show stats instead of the live scoreboard when a game has been quiet this long,
 // in case its end event never arrived
 const GAME_IDLE_AFTER = 20 * 60 * 1000
@@ -160,7 +160,7 @@ export default class Tracker extends EventEmitter {
 	generatePauseStats() {
 		const lan = this.getStatsSince(this.lanStart())
 		return {
-			today: this.getStatsSince(this.todayStart()),
+			session: this.getStatsSince(this.sessionStart()),
 			lan,
 			lanHighlights: highlights(lan),
 			lans: this.getLanList(),
@@ -230,13 +230,13 @@ export default class Tracker extends EventEmitter {
 		return start
 	}
 
-	// The latest DAY_STARTS_AT o'clock
-	todayStart() {
-		const start = new Date()
-		if (start.getHours() < DAY_STARTS_AT)
-			start.setDate(start.getDate() - 1)
-		start.setHours(DAY_STARTS_AT, 0, 0, 0)
-		return start.getTime()
+	// Start time of the first game of the latest session
+	sessionStart() {
+		const games = this.realGames()
+		let start = games.at(-1)?.time ?? Date.now()
+		for (let i = games.length - 2; i >= 0 && start - games[i].time < SESSION_GAP; i--)
+			start = games[i].time
+		return start
 	}
 
 	// Kills / deaths over the player's own last `numGames` real games (all if 0)
