@@ -692,6 +692,8 @@ start_new_round()
         send_event(MODE_EVENT[g_mode])
     else
         send_event(g_roundCount == 1 ? "firstround" : "round")
+    // Everyone drinks the fællesskål at the start of the round (the web app counts it)
+    refresh_player_stats_soon()
 
     set_task(10.0, "task_money_check", TASK_MONEY_CHECK)
 }
@@ -704,8 +706,6 @@ public on_round_start()
         return
 
     send_event("roundstart")
-    // Everyone drinks a sip at round start
-    refresh_player_stats_soon()
     g_bombDefused = false
     g_bombExploded = false
     g_timeElapsed = false

@@ -58,6 +58,9 @@ const AWARDS_SHOWN_FOR = 5 * 60 * 1000
 // a new round, when everyone is alive again
 const DEATH_EVENTS = [ 'kill', 'headshot', 'knife', 'grenade', 'tk', 'suicide', 'kniferound', 'bong' ]
 const ROUND_EVENTS = [ 'firstround', 'round', 'roundstart', 'leif', 'rambo', 'bongintro', 'mapend', 'mapchange' ]
+// A new round (at the start of freeze time, or a special round): everyone drinks
+// the fællesskål. Not at 'roundstart', which is when freeze time ends.
+const NEW_ROUND_EVENTS = [ 'round', 'leif', 'rambo', 'bongintro' ]
 
 function awards(scores) {
 	const players = scores.filter((p) => p.kills || p.deaths)
@@ -463,6 +466,7 @@ export default class Tracker extends EventEmitter {
 			this.running = true
 			this.lastEventTime = Date.now()
 			this.board.reset()
+			this.board.handleNewRound()
 			this.updateState()
 		}
 
@@ -493,7 +497,7 @@ export default class Tracker extends EventEmitter {
 		else if (! this.running)
 			return
 
-		else if (cmd === 'roundstart')
+		else if (NEW_ROUND_EVENTS.includes(cmd))
 			this.board.handleNewRound()
 
 		else if (cmd === 'kill' || cmd === 'headshot' || cmd === 'grenade')
