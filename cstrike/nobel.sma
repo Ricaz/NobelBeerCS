@@ -161,8 +161,8 @@ new bool:g_awaitingBalance
 new bool:g_awaitingStats
 new bool:g_warnedNoStats
 
-// Scoreboard sips are shown in the HP column (the HealthInfo message)
-new g_msgHealthInfo
+// Scoreboard sips are shown in the Money column (the Account message)
+new g_msgAccount
 new g_roundStartMoney[MAX_PLAYERS + 1]
 new g_lastWeapon[MAX_PLAYERS + 1]
 new g_lastTeam[MAX_PLAYERS + 1][16]
@@ -206,10 +206,10 @@ public plugin_init()
     register_logevent("on_hostage_touched", 3, "2=Touched_A_Hostage")
 
     RegisterHam(Ham_Spawn, "player", "on_player_spawn", 1)
-    // The newer CS 1.6 scoreboard's HP column; only sent by updated game servers
-    g_msgHealthInfo = get_user_msgid("HealthInfo")
-    if (g_msgHealthInfo)
-        register_message(g_msgHealthInfo, "on_health_info")
+    // The newer CS 1.6 scoreboard's Money column; only sent by updated game servers
+    g_msgAccount = get_user_msgid("Account")
+    if (g_msgAccount)
+        register_message(g_msgAccount, "on_account")
     RegisterHam(Ham_CS_Player_ResetMaxSpeed, "player", "on_reset_maxspeed", 1)
     RegisterHam(Ham_Weapon_WeaponIdle, "weapon_flashbang", "on_flashbang_idle")
     RegisterHam(Ham_TraceAttack, "hostage_entity", "on_hostage_hurt")
@@ -1498,12 +1498,13 @@ apply_player_stats(JSON:reply)
 }
 
 // ----------------------------------------------------------------------------
-// Scoreboard sips: the scoreboard's HP column shows each player's sips instead.
-// The game sends HealthInfo per viewer (with -1 to hide enemies); every one is
-// rewritten, and new sips are pushed when the web app sends them.
+// Scoreboard sips: the scoreboard's Money column shows each player's sips instead
+// (the HP column is blank for dead players). The game sends Account per viewer
+// (with -1 to hide enemies); every one is rewritten, and new sips are pushed when
+// the web app sends them.
 // ----------------------------------------------------------------------------
 
-public on_health_info(msgid, dest, receiver)
+public on_account(msgid, dest, receiver)
 {
     if (!g_enabled || !g_setting[SET_SIPS])
         return PLUGIN_CONTINUE
@@ -1516,7 +1517,7 @@ public on_health_info(msgid, dest, receiver)
 
 send_sips_to_scoreboards()
 {
-    if (!g_msgHealthInfo || !g_enabled || !g_setting[SET_SIPS])
+    if (!g_msgAccount || !g_enabled || !g_setting[SET_SIPS])
         return
 
     new viewers[MAX_PLAYERS], num
@@ -1525,7 +1526,7 @@ send_sips_to_scoreboards()
         for (new player = 1; player <= MAX_PLAYERS; player++) {
             if (!g_hasStats[player] || !is_user_connected(player))
                 continue
-            message_begin(MSG_ONE, g_msgHealthInfo, _, viewers[i])
+            message_begin(MSG_ONE, g_msgAccount, _, viewers[i])
             write_byte(player)
             write_long(g_statSips[player])
             message_end()
