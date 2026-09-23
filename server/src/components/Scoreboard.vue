@@ -67,11 +67,11 @@ const kd = (p) => kdRatio(p).toFixed(props.live ? 1 : 2)
   font-size: 1.2rem;
 }
 
-/* The live board fills the screen: the font grows with fewer players (a row is
-   about 2.1em high), but stays small enough to fit a long name (a row is about
-   57em wide) */
+/* The live board fills the screen (20 players fit at 1080p): the font grows with
+   fewer players (a row is about 1.6em high), but stays small enough to fit a long
+   name (a row is about 57em wide) */
 .scoreboard.live {
-  font-size: clamp(1rem, min(calc((100vh - 14rem) / (var(--rows) + 1) / 2.1), calc((100vw - 4rem) / 57)), 2rem);
+  font-size: clamp(1rem, min(calc((100vh - 16.5rem) / (var(--rows) + 1) / 1.6), calc((100vw - 4rem) / 57)), 2rem);
 }
 
 h1 {
@@ -94,7 +94,8 @@ h1 {
   grid-template-columns: 1.8em minmax(0, 1fr) 3.4em 3.4em 3em 3.2em 3.6em 2.8em 3.8em var(--beer-column, 9em);
   align-items: center;
   column-gap: .5em;
-  padding: .25em .5em;
+  padding: .12em .5em;
+  line-height: 1.3;
   border-bottom: 1px solid rgb(255 255 255 / 7%);
   /* Team color as a thin line on the left */
   border-left: .2em solid var(--team, transparent);
@@ -125,7 +126,7 @@ h1 {
 .live .row:not(.head) {
   /* With few players the font can't grow without cutting names; taller rows fill
      the screen instead */
-  min-height: min(calc((100vh - 14rem) / (var(--rows) + 1)), 2.6em);
+  min-height: min(calc((100vh - 16.5rem) / (var(--rows) + 1)), 2.2em);
 }
 
 .CT { --team: #00abff; }

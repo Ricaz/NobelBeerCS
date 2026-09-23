@@ -797,6 +797,13 @@ export default {
   padding: 0 .75rem;
 }
 
+/* The hidden page is only seen while sliding: a long All stats table would
+   otherwise make the live page scroll */
+.page[inert] {
+  max-height: calc(100vh - 7rem);
+  overflow: hidden;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .track.animate,
   .modes .loading {
