@@ -71,6 +71,9 @@ All the commands are toggleable.
     updated CS 1.6 client with HP and Money columns)
 * Noob buff (`nobel_noobbuff`, on by default)
   * Compensates badly performing players
+* Teleswap (`nobel_teleswap`, off by default)
+  * Each round has a 20% chance that a random T and CT swap places (at least 30 seconds in),
+    with a short flash and a sound
 * Autobalance (`nobel_balance <games>`, runs automatically with `nobel_start`)
   * Rates each player by kills/deaths over their own last `<games>` games (50 by default)
   * Picks a random split among the ones where the teams' average ratings are within 3%,

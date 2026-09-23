@@ -29,6 +29,11 @@
 #define ROUND_ENDING_WARNING 19.0
 #define SOCKET_RETRY_DELAY 10.0
 
+// Teleswap: chance per round that a random T and CT swap places, not before
+// TELESWAP_EARLIEST seconds into the round
+#define TELESWAP_CHANCE 20
+#define TELESWAP_EARLIEST 30.0
+
 // Noob buff: free gear after this many rounds in a row without a kill (additive),
 // for players in the lower half by sips with fewer kills than deaths
 #define NOOBBUFF_VEST_ROUNDS 2
@@ -59,6 +64,7 @@ enum (+= 100)
     TASK_BALANCE_TIMEOUT,
     TASK_STATS_TIMEOUT,
     TASK_STATS_REFRESH,
+    TASK_TELESWAP,
     TASK_PAUSE_ACK
 }
 
@@ -81,7 +87,8 @@ enum Setting
     SET_ANTIZOOMPISTOL,
     SET_FLASHPROTECTION,
     SET_NOOBBUFF,
-    SET_SIPS
+    SET_SIPS,
+    SET_TELESWAP
 }
 new const SETTING_CMD[Setting][] = {
     "nobel_pause",
@@ -91,7 +98,8 @@ new const SETTING_CMD[Setting][] = {
     "nobel_antizoompistol",
     "nobel_flashprotection",
     "nobel_noobbuff",
-    "nobel_sips"
+    "nobel_sips",
+    "nobel_teleswap"
 }
 new const SETTING_NAME[Setting][] = {
     "pausing",
@@ -101,10 +109,11 @@ new const SETTING_NAME[Setting][] = {
     "antizoompistol",
     "flashprotection",
     "noobbuff",
-    "scoreboardsips"
+    "scoreboardsips",
+    "teleswap"
 }
-new const bool:SETTING_ANNOUNCE[Setting] = { true, true, true, false, true, true, true, true }
-new bool:g_setting[Setting] = { false, false, true, false, false, false, true, true }
+new const bool:SETTING_ANNOUNCE[Setting] = { true, true, true, false, true, true, true, true, true }
+new bool:g_setting[Setting] = { false, false, true, false, false, false, true, true, false }
 
 // Special rounds. Only one can be active or queued at a time.
 enum RoundMode
@@ -646,6 +655,7 @@ start_new_round()
 {
     remove_task(TASK_ROUND_ENDING)
     remove_task(TASK_HURRYUP)
+    remove_task(TASK_TELESWAP)
 
     for (new id = 1; id <= MAX_PLAYERS; id++) {
         g_frozen[id] = false
@@ -710,6 +720,79 @@ public on_round_start()
         g_flashProtectionActive = true
         set_task(FLASH_PROTECTION_TIME, "task_end_flash_protection", TASK_FLASH_PROTECTION)
     }
+
+    // Some time between 30 seconds in and 5 seconds before the round timer runs out
+    new Float:roundTime = get_cvar_float("mp_roundtime") * 60.0
+    if (g_setting[SET_TELESWAP] && g_mode == MODE_NORMAL && random_num(1, 100) <= TELESWAP_CHANCE && roundTime - 5.0 > TELESWAP_EARLIEST)
+        set_task(random_float(TELESWAP_EARLIEST, roundTime - 5.0), "task_teleswap", TASK_TELESWAP)
+}
+
+// ----------------------------------------------------------------------------
+// Teleswap: a random living T and CT swap places, with a short flash
+// ----------------------------------------------------------------------------
+
+public task_teleswap()
+{
+    if (!g_enabled || !g_setting[SET_TELESWAP] || g_paused)
+        return
+
+    new ts[MAX_PLAYERS], cts[MAX_PLAYERS], numT, numCT
+    get_game_players(ts, numT, "ae", "TERRORIST")
+    get_game_players(cts, numCT, "ae", "CT")
+    if (!numT || !numCT)
+        return
+
+    new first = ts[random(numT)], second = cts[random(numCT)]
+    teleswap(first, second)
+
+    new firstId[MAX_AUTHID_LENGTH], secondId[MAX_AUTHID_LENGTH]
+    get_player_id(first, firstId, charsmax(firstId))
+    get_player_id(second, secondId, charsmax(secondId))
+    send_event("teleswap", firstId, secondId)
+    log_amx("Teleswap: %n <-> %n", first, second)
+}
+
+teleswap(first, second)
+{
+    new Float:origin[2][3], Float:angles[2][3], bool:ducking[2]
+    new players[2]
+    players[0] = first
+    players[1] = second
+    for (new i; i < 2; i++) {
+        pev(players[i], pev_origin, origin[i])
+        pev(players[i], pev_v_angle, angles[i])
+        ducking[i] = (pev(players[i], pev_flags) & FL_DUCKING) != 0
+    }
+
+    for (new i; i < 2; i++) {
+        new id = players[i], other = 1 - i
+        // Arrive crouched if the other player was, so nobody gets stuck in a vent
+        if (ducking[other]) {
+            set_pev(id, pev_flags, pev(id, pev_flags) | FL_DUCKING)
+            engfunc(EngFunc_SetSize, id, Float:{ -16.0, -16.0, -18.0 }, Float:{ 16.0, 16.0, 18.0 })
+            set_pev(id, pev_view_ofs, Float:{ 0.0, 0.0, 12.0 })
+        }
+        engfunc(EngFunc_SetOrigin, id, origin[other])
+        set_pev(id, pev_angles, angles[other])
+        set_pev(id, pev_v_angle, angles[other])
+        set_pev(id, pev_fixangle, 1)
+        set_pev(id, pev_velocity, Float:{ 0.0, 0.0, 0.0 })
+        flash_fade(id)
+    }
+}
+
+// White screen fading out over one second, like a short flashbang
+flash_fade(id)
+{
+    message_begin(MSG_ONE, g_msgScreenFade, _, id)
+    write_short(1<<12) // duration: 1 second
+    write_short(0) // hold time
+    write_short(0x0000) // FFADE_IN: from the color back to normal
+    write_byte(255) // r
+    write_byte(255) // g
+    write_byte(255) // b
+    write_byte(255) // a
+    message_end()
 }
 
 public on_round_end()
@@ -718,6 +801,7 @@ public on_round_end()
         return
 
     remove_task(TASK_ROUND_ENDING)
+    remove_task(TASK_TELESWAP)
 
     new players[MAX_PLAYERS], aliveT, aliveCT
     get_players(players, aliveT, "ae", "TERRORIST")
