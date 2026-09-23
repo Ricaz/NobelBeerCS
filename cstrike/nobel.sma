@@ -32,7 +32,7 @@
 // Teleswap: chance per round that a random T and CT swap places, not before
 // TELESWAP_EARLIEST seconds into the round
 #define TELESWAP_CHANCE 20
-#define TELESWAP_EARLIEST 30.0
+#define TELESWAP_EARLIEST 10.0
 
 // Noob buff: free gear after this many rounds in a row without a kill (additive),
 // for players in the lower half by sips with fewer kills than deaths
