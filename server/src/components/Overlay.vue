@@ -33,7 +33,7 @@ defineExpose({ playVideo, stopVideo, setVolume })
   <div class="overlay-body">
     <div class="overlay-text" :class="{ summary: overlay.summary }">
       <div v-for="(line, i) in overlay.lines" :key="i">
-        <span v-for="(part, j) in line" :key="j" :class="part.team">{{ part.text }}</span>
+        <span v-for="(part, j) in line" :key="j" :class="[ part.team, { small: part.small } ]">{{ part.text }}</span>
       </div>
     </div>
     <video ref="video" class="hidden" id="video">Video not available</video>
@@ -66,6 +66,12 @@ defineExpose({ playVideo, stopVideo, setVolume })
 .overlay-text .TERRORIST {
   font-weight: 700;
   text-shadow: 0 0 12px rgb(0 0 0 / 80%), 3px -1px 7px rgb(0 0 0 / 50%);
+}
+
+/* The killer's all-time teamkill count */
+.overlay-text .small {
+  font-size: .5em;
+  color: rgb(255 255 255 / 85%);
 }
 
 /* Several teamkills/suicides: header plus a line per killer */

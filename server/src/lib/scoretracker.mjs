@@ -46,8 +46,39 @@ function highlights(scores) {
 		beers: most('sips', (sips) => (sips / SIPS_PER_BEER).toFixed(1)),
 		teamkills: most('teamkills'),
 		knifekills: most('knifekills'),
+		knifed: most('knifed'),
 		suicides: most('suicides'),
 	}
+}
+
+// End-of-map awards for one game: [ { title, description, names, value } ], only
+// the ones someone actually earned
+const AWARDS_SHOWN_FOR = 5 * 60 * 1000
+
+function awards(scores) {
+	const players = scores.filter((p) => p.kills || p.deaths)
+	const kd = (p) => p.deaths ? p.kills / p.deaths : p.kills
+	const pick = (title, description, value, format = (v) => v, lowest = false) => {
+		const values = players.map(value)
+		const best = lowest ? Math.min(...values) : Math.max(...values)
+		if (!players.length || (!lowest && best <= 0))
+			return null
+		const names = players.filter((p) => value(p) === best).map((p) => p.name)
+		return { title, description, names, value: format(best) }
+	}
+	const beers = (sips) => `${(sips / SIPS_PER_BEER).toFixed(1)} øl`
+
+	return [
+		pick('Beer king', 'Most øls', (p) => p.sips, beers),
+		pick('Sharpshooter', 'Best K/D', (p) => p.kills ? kd(p) : 0, (v) => v.toFixed(2)),
+		pick('Butcher', 'Most kills', (p) => p.kills),
+		pick('Knife master', 'Most knife kills', (p) => p.knifekills),
+		pick('Pincushion', 'Most knifed', (p) => p.knifed),
+		pick('Friendly fire', 'Most teamkills', (p) => p.teamkills),
+		pick('Kamikaze', 'Most suicides', (p) => p.suicides),
+		pick('Cannon fodder', 'Most deaths', (p) => p.deaths),
+		pick('Designated driver', 'Fewest øls', (p) => p.sips, beers, true),
+	].filter(Boolean)
 }
 
 function isRealGame(game) {
@@ -481,6 +512,30 @@ export default class Tracker extends EventEmitter {
 		this.endTime = endTime
 		this.saveScoreboard(true)
 		this.running = false
+
+		// Awards for real games only, shown for a few minutes
+		const game = this.getScoreboard()
+		if (isRealGame(game)) {
+			this.lastAwards = { awards: awards(game.scores), until: endTime + AWARDS_SHOWN_FOR }
+			this.emit('awards', this.currentAwards())
+		}
+	}
+
+	// The last game's awards while they are still shown, with the time left (ms)
+	currentAwards() {
+		const left = (this.lastAwards?.until ?? 0) - Date.now()
+		return left > 0 ? { awards: this.lastAwards.awards, left } : null
+	}
+
+	// All teamkills by a player, over all history including the current game
+	totalTeamkills(id) {
+		let total = 0
+		for (const entry of this.history) {
+			if (!isRealGame(entry.game) && entry.time !== this.startTime)
+				continue
+			total += entry.game.scores.find((p) => p.id === id)?.teamkills ?? 0
+		}
+		return total
 	}
 }
 

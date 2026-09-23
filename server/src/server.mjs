@@ -31,6 +31,7 @@ var tracker = new scoretracker({ historyDir: process.env.HISTORY_DIR })
 tracker.on('state', (state) => { broadcast({ cmd: 'state', data: state }) })
 tracker.on('stats', (stats) => { broadcast({ cmd: 'stats', data: stats }) })
 tracker.on('game-ended', () => { broadcast({ cmd: 'game-ended' }) })
+tracker.on('awards', (awards) => { broadcast({ cmd: 'awards', data: awards }) })
 
 // The mod sends newline-terminated JSON messages over UDP. The replies to
 // requests (like 'balance') are sent back to the address they came from.
@@ -123,6 +124,10 @@ function handleMessage(message, reply) {
 
 	// Scoreboard
 	tracker.handleEvent(message)
+
+	// The killer's new all-time teamkill count, for the overlay
+	if (message.cmd === 'tk' && message.args?.[0])
+		message.teamkillTotal = tracker.totalTeamkills(message.args[0])
 	broadcast({ cmd: 'scoreboard', args: [ tracker.getScoreboard() ] })
 
 	// Handle media
@@ -170,6 +175,9 @@ ws.on('connection', (conn, req) => {
 
 	log.ws(`Sending state '${tracker.state}' and stats`)
 	conn.send(JSON.stringify({ cmd: 'state', data: tracker.state }))
+	const awards = tracker.currentAwards()
+	if (awards)
+		conn.send(JSON.stringify({ cmd: 'awards', data: awards }))
 	const stats = tracker.generateStats()
 	if (stats)
 		conn.send(JSON.stringify({ cmd: 'stats', data: stats }))

@@ -31,6 +31,9 @@ export default {
       // Teamkills and suicides since the game last resumed: { type: 'tk', killer, victim } | { type: 'suicide', player }
       shame: [],
       shameAt: 0,
+      // End-of-map awards while they are shown
+      awards: null,
+      awardsTimer: null,
       socket: null,
       // 'lan': the active LAN (live scoreboard or LAN stats), 'all': all-time stats
       mode: 'all',
@@ -149,6 +152,11 @@ export default {
           this.overlay.summary = false
           this.overlay.show = true
           break
+        case "awards":
+          this.awards = data.data.awards
+          clearTimeout(this.awardsTimer)
+          this.awardsTimer = setTimeout(() => { this.awards = null }, data.data.left)
+          break
         case "paused":
           this.paused = true
           break
@@ -176,6 +184,10 @@ export default {
     changeState: function (state) {
       const previous = this.state
       this.state = state
+
+      // A new game takes over the screen
+      if (state === 'live')
+        this.awards = null
 
       // Slide on automatic switches too, except for the first state on page load
       if (this.hasState)
@@ -291,7 +303,9 @@ export default {
         this.shame = []
 
       const continuing = this.shame.length > 0
-      this.shame.push(data.cmd === 'tk' ? { type: 'tk', killer: first, victim: second } : { type: 'suicide', player: first })
+      this.shame.push(data.cmd === 'tk'
+        ? { type: 'tk', killer: first, victim: second, total: data.teamkillTotal }
+        : { type: 'suicide', player: first })
       this.shameAt = now
 
       this.overlay.lines = this.shameLines()
@@ -309,11 +323,19 @@ export default {
         return { text: p?.name ?? '???', team: p?.team }
       }
       const text = (text) => ({ text })
+      const small = (text) => ({ text, small: true })
+      // The killer's latest all-time teamkill count: "231st teamkill"
+      const total = (killer) => this.shame.findLast((e) => e.type === 'tk' && e.killer === killer)?.total
+      const ordinal = (n) => {
+        const suffix = n % 100 >= 11 && n % 100 <= 13 ? 'th' : { 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] ?? 'th'
+        return `${n}${suffix}`
+      }
 
       if (this.shame.length === 1) {
         const e = this.shame[0]
         return e.type === 'tk'
-          ? [ [ player(e.killer) ], [ text('teamkilled') ], [ player(e.victim) ] ]
+          ? [ [ player(e.killer) ], [ text('teamkilled') ], [ player(e.victim) ],
+            ...(e.total ? [ [ small(`${player(e.killer).text}'s ${ordinal(e.total)} teamkill`) ] ] : []) ]
           : [ [ player(e.player), text(' committed suicide!') ] ]
       }
 
@@ -344,7 +366,8 @@ export default {
         [ text(header) ],
         ...order.map((line) => line.suicide
           ? [ player(line.suicide), text(' committed suicide') ]
-          : [ player(line.killer), text(' teamkilled '), ...list(victims.get(line.killer)) ]),
+          : [ player(line.killer), text(' teamkilled '), ...list(victims.get(line.killer)),
+            ...(total(line.killer) ? [ small(` · ${ordinal(total(line.killer))} teamkill`) ] : []) ]),
       ]
     },
 
@@ -457,6 +480,7 @@ export default {
   </div>
   <Overlay ref="overlay" :overlay="overlay" />
   <KillFeed ref="killfeed" :paused="paused" />
+  <AwardsBar v-if="awards?.length" :awards="awards" />
 </template>
 
 <style>
