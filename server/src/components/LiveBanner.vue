@@ -16,7 +16,7 @@ onUnmounted(() => clearTimeout(timer))
   <div class="live-banner" role="status" aria-label="The game is live">
     <div class="track">
       <span v-for="(word, w) in WORDS" :key="w" class="word">
-        <span v-for="(letter, i) in word" :key="i" class="letter" :style="{ animationDelay: `${-(w * 4 + i) * 0.09}s` }">{{ letter }}</span>
+        <span v-for="(letter, i) in word" :key="i" class="letter" :style="{ animationDelay: `${-(w * 4 + i) * 0.1}s` }">{{ letter }}</span>
       </span>
     </div>
   </div>
@@ -38,6 +38,7 @@ onUnmounted(() => clearTimeout(timer))
   gap: 8vh;
   white-space: nowrap;
   animation: scroll 4.5s linear forwards;
+  will-change: transform;
 }
 
 .word {
@@ -51,8 +52,12 @@ onUnmounted(() => clearTimeout(timer))
   line-height: 1;
   -webkit-text-stroke: .04em #000;
   paint-order: stroke fill;
-  text-shadow: 0 .06em 0 rgb(0 0 0 / 60%), 0 0 .3em rgb(255 160 0 / 60%);
-  animation: bounce .45s ease-in-out infinite alternate, colors .6s steps(1) infinite;
+  /* A sharp shadow: a blurred glow on letters this big is slow to redraw */
+  text-shadow: 0 .06em 0 rgb(0 0 0 / 60%);
+  /* A continuous wave, each letter a little behind the previous one. The colors
+     jump instead of blending: blending repaints the huge letters on every frame. */
+  animation: wave 1.2s ease-in-out infinite, colors 1.2s steps(1) infinite;
+  will-change: transform;
 }
 
 @keyframes scroll {
@@ -60,9 +65,9 @@ onUnmounted(() => clearTimeout(timer))
   to { transform: translateX(-100%); }
 }
 
-@keyframes bounce {
-  from { transform: translateY(12%) rotate(-7deg) scale(.95); }
-  to { transform: translateY(-12%) rotate(7deg) scale(1.08); }
+@keyframes wave {
+  0%, 100% { transform: translateY(14%) rotate(-6deg); }
+  50% { transform: translateY(-14%) rotate(6deg); }
 }
 
 @keyframes colors {
