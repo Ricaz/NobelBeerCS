@@ -513,12 +513,14 @@ export default class Tracker extends EventEmitter {
 		this.running = false
 
 		// Awards for real games only, shown for a few minutes together with a snapshot of
-		// the final scoreboard: after the map change everyone disconnects and switches teams
+		// the final scoreboard: after the map change everyone disconnects and switches teams.
+		// Everyone who played (on a team) is in it, connected or not: a changelevel skips the end-of-map
+		// screen, so the game only ends once everyone has already disconnected.
 		const game = this.getScoreboard()
 		if (isRealGame(game)) {
 			this.lastAwards = {
 				awards: awards(game.scores),
-				scores: JSON.parse(JSON.stringify(game.scores.filter((p) => p.active))),
+				scores: JSON.parse(JSON.stringify(game.scores.filter((p) => p.team === 'CT' || p.team === 'TERRORIST' || p.kills || p.deaths))),
 				until: endTime + AWARDS_SHOWN_FOR,
 			}
 			this.emit('awards', this.currentAwards())
