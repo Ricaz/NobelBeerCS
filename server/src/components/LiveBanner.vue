@@ -37,7 +37,7 @@ onUnmounted(() => clearTimeout(timer))
 
 .track {
   display: flex;
-  gap: 8vh;
+  gap: 18vh;
   white-space: nowrap;
   animation: scroll 4.5s linear forwards;
   will-change: transform;
