@@ -3,7 +3,7 @@
 // (last session, this LAN, all time). Players are listed in the given order.
 import { computed } from 'vue'
 import BeerBar from './BeerBar.vue'
-import { kdRatio, beers, crowns } from './playerStats.js'
+import { kdRatio, beers } from './playerStats.js'
 
 const props = defineProps({
   players: Array,
@@ -16,6 +16,8 @@ const props = defineProps({
   live: Boolean,
   // Live: player id => changes on each kill, to flash their row
   flashes: Object,
+  // Live: ids of players dead this round, struck through and greyed out
+  dead: Array,
 })
 
 // [ header, player field ]; no field is the K/D ratio
@@ -24,7 +26,6 @@ const COLUMNS = [
   [ 'Knife', 'knifekills' ], [ 'Knifed', 'knifed' ], [ 'TK', 'teamkills' ], [ 'Suicide', 'suicides' ],
 ]
 
-const best = computed(() => crowns(props.players))
 const round = computed(() => props.live ? Math.max(0, ...props.players.map((p) => p.rounds || 0)) : 0)
 // Beers over many games run into the thousands: a bar relative to the leader
 const maxSips = computed(() => Math.max(1, ...props.players.map((p) => p.sips)))
@@ -39,18 +40,14 @@ const kd = (p) => kdRatio(p).toFixed(props.live ? 1 : 2)
       <span class="rank">#</span>
       <span>{{ nameLabel }}</span>
       <span v-for="[ label ] in COLUMNS" :key="label" class="num">{{ label }}</span>
-      <span class="num">Øl</span>
+      <span class="num">{{ live ? 'ØLs' : 'Øl' }}</span>
       <span v-if="extra" class="num">{{ extra.label }}</span>
     </div>
 
-    <div v-for="(p, i) in players" :key="p.id" class="row" :class="p.team">
+    <div v-for="(p, i) in players" :key="p.id" class="row" :class="[ p.team, { dead: live && dead?.includes(p.id) } ]">
       <span v-if="live && flashes?.[p.id]" :key="flashes[p.id]" class="flash"></span>
       <span class="rank">{{ i + 1 }}</span>
-      <span class="name">
-        <span class="text" :title="p.name">{{ p.name }}</span>
-        <span v-if="best.beers.has(p.id)" class="crown" title="Most øls">👑</span>
-        <span v-if="best.kd.has(p.id)" class="crown" title="Best K/D">🎯</span>
-      </span>
+      <span class="name" :title="p.name"><span class="text">{{ p.name }}</span></span>
       <span v-for="[ label, field ] in COLUMNS" :key="label" class="num" :class="field ? { zero: !p[field] } : 'kd'">
         {{ field ? p[field] : kd(p) }}
       </span>
@@ -72,9 +69,9 @@ const kd = (p) => kdRatio(p).toFixed(props.live ? 1 : 2)
 
 /* The live board fills the screen: the font grows with fewer players (a row is
    about 2.1em high), but stays small enough to fit a long name (a row is about
-   55em wide) */
+   57em wide) */
 .scoreboard.live {
-  font-size: clamp(1rem, min(calc((100vh - 14rem) / (var(--rows) + 1) / 2.1), calc((100vw - 4rem) / 55)), 2rem);
+  font-size: clamp(1rem, min(calc((100vh - 14rem) / (var(--rows) + 1) / 2.1), calc((100vw - 4rem) / 57)), 2rem);
 }
 
 h1 {
@@ -120,6 +117,11 @@ h1 {
   }
 }
 
+/* Room for 10 glasses of beer */
+.live .row {
+  --beer-column: 11.5em;
+}
+
 .live .row:not(.head) {
   /* With few players the font can't grow without cutting names; taller rows fill
      the screen instead */
@@ -132,11 +134,9 @@ h1 {
 /* Only the header text is smaller: the row keeps the font size of the rows below,
    so its columns (sized in em) line up with theirs */
 .row.head > * {
-  font-size: .6em;
-  text-transform: uppercase;
-  letter-spacing: .04em;
+  font-size: .8em;
   white-space: nowrap;
-  color: rgb(255 255 255 / 50%);
+  color: rgb(255 255 255 / 60%);
 }
 
 .rank {
@@ -145,22 +145,10 @@ h1 {
 }
 
 .name {
-  display: flex;
-  align-items: center;
-  gap: .35em;
-  min-width: 0;
-}
-
-.name .text {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--team, white);
-}
-
-.crown {
-  flex: none;
-  font-size: .8em;
 }
 
 .num {
@@ -208,6 +196,36 @@ h1 {
   background: rgb(255 180 0 / 85%);
 }
 
+/* Dead this round: a line is drawn through the name, then the row turns grey.
+   Only dying is animated; everyone comes back at once on a new round. */
+.name .text {
+  position: relative;
+}
+
+.name .text::after {
+  content: '';
+  position: absolute;
+  left: -.1em;
+  right: -.1em;
+  top: 55%;
+  height: .1em;
+  border-radius: .05em;
+  background: rgb(255 255 255 / 85%);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+.dead .name .text::after {
+  transform: scaleX(1);
+  transition: transform .35s cubic-bezier(.6, 0, .4, 1);
+}
+
+.dead > :not(.flash) {
+  opacity: .4;
+  filter: grayscale(1);
+  transition: opacity .6s ease .3s, filter .6s ease .3s;
+}
+
 /* A row lights up when that player gets a kill */
 .flash {
   position: absolute;
@@ -226,6 +244,11 @@ h1 {
 @media (prefers-reduced-motion: reduce) {
   .flash {
     animation-duration: .01s;
+  }
+
+  .dead .name .text::after,
+  .dead > :not(.flash) {
+    transition: none;
   }
 }
 </style>

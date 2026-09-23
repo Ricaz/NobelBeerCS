@@ -6,7 +6,7 @@ import { SIPS_PER_BEER } from './playerStats.js'
 const props = defineProps({ sips: Number })
 
 // More full glasses than this are shown as "+N"
-const MAX_GLASSES = 6
+const MAX_GLASSES = 10
 
 const full = computed(() => Math.floor(props.sips / SIPS_PER_BEER))
 const current = computed(() => (props.sips % SIPS_PER_BEER) / SIPS_PER_BEER)

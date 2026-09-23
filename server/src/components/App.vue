@@ -37,6 +37,8 @@ export default {
       status: "not connected",
       volume: 30,
       scores: [],
+      // ids of players dead this round
+      dead: [],
       audioElements: [],
       cooldowns: [],
       // lines: [ [ { text, team } ] ], names get their team's color
@@ -160,6 +162,7 @@ export default {
       switch (data.cmd) {
         case "scoreboard":
           this.scores = data.args[0].scores
+          this.dead = data.args[0].dead || []
           break
         case "stats":
           this.stats = data.data
@@ -590,7 +593,7 @@ export default {
                 </Transition>
 
                 <div v-if="activeScores.show" class="scores-active pb-5">
-                  <Scoreboard :players="activeScores.scores" :title="activeScores.title" live :flashes="finalScores ? null : flashes" />
+                  <Scoreboard :players="activeScores.scores" :title="activeScores.title" live :flashes="finalScores ? null : flashes" :dead="finalScores ? null : dead" />
                 </div>
               </section>
 

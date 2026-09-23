@@ -128,7 +128,7 @@ function handleMessage(message, reply) {
 	// The killer's new all-time teamkill count, for the overlay
 	if (message.cmd === 'tk' && message.args?.[0])
 		message.teamkillTotal = tracker.totalTeamkills(message.args[0])
-	broadcast({ cmd: 'scoreboard', args: [ tracker.getScoreboard() ] })
+	broadcast({ cmd: 'scoreboard', args: [ tracker.getLiveScoreboard() ] })
 
 	// Handle media
 	if (message.cmd === 'theme' && media[message.args[0]]) {
@@ -170,7 +170,7 @@ ws.on('connection', (conn, req) => {
 	log.ws(`Connection from ${clientAddress}.`)
 
 	log.ws('Sending full state.')
-	var fullState = { cmd: 'scoreboard', args: [ tracker.getScoreboard() ] }
+	var fullState = { cmd: 'scoreboard', args: [ tracker.getLiveScoreboard() ] }
 	conn.send(JSON.stringify(fullState))
 
 	log.ws(`Sending state '${tracker.state}' and stats`)

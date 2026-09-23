@@ -54,6 +54,10 @@ function highlights(scores) {
 // End-of-map awards for one game: [ { title, description, names, value } ], only
 // the ones someone actually earned
 const AWARDS_SHOWN_FOR = 5 * 60 * 1000
+// Events for a death (the victim is the second argument, or the only one), and for
+// a new round, when everyone is alive again
+const DEATH_EVENTS = [ 'kill', 'headshot', 'knife', 'grenade', 'tk', 'suicide', 'kniferound', 'bong' ]
+const ROUND_EVENTS = [ 'firstround', 'round', 'roundstart', 'leif', 'rambo', 'bongintro', 'mapend', 'mapchange' ]
 
 function awards(scores) {
 	const players = scores.filter((p) => p.kills || p.deaths)
@@ -125,6 +129,7 @@ export default class Tracker extends EventEmitter {
 
 		// Load temp scoreboard if exists
 		this.board = new Scoreboard()
+		this.dead = new Set() // ids of players dead this round
 		this.loadScoreboard()
 
 		// The state also changes with time: LANs end, games go quiet
@@ -408,6 +413,11 @@ export default class Tracker extends EventEmitter {
 		}
 	}
 
+	// The scoreboard with who is dead this round, for the web page (not saved)
+	getLiveScoreboard() {
+		return { ...this.getScoreboard(), dead: [ ...this.dead ] }
+	}
+
 	// Updates the current game in history and writes it to disk. Writes are
 	// batched, and go through a temp file so a crash can't leave a broken file.
 	saveScoreboard(immediately = false) {
@@ -436,6 +446,11 @@ export default class Tracker extends EventEmitter {
 
 		if (this.running)
 			this.lastEventTime = Date.now()
+
+		if (ROUND_EVENTS.includes(cmd))
+			this.dead.clear()
+		else if (DEATH_EVENTS.includes(cmd) && args?.length)
+			this.dead.add(cmd === 'suicide' ? args[0] : args[1])
 
 		if (cmd === 'firstround') {
 			// The previous game's end event may have been lost
