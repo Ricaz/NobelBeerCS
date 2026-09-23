@@ -160,6 +160,9 @@ new bool:g_flashThrown
 new bool:g_flashProtectionActive
 
 new bool:g_frozen[MAX_PLAYERS + 1]
+// Rambo: we sent this player +attack; and when we may send it again
+new bool:g_forcedAttack[MAX_PLAYERS + 1]
+new Float:g_nextForcedAttack[MAX_PLAYERS + 1]
 new g_roundsWithoutKill[MAX_PLAYERS + 1]
 new bool:g_killedThisRound[MAX_PLAYERS + 1]
 // This game's sips/kills/deaths per player, from the web app
@@ -221,16 +224,17 @@ public plugin_init()
         register_message(g_msgAccount, "on_account")
     RegisterHam(Ham_CS_Player_ResetMaxSpeed, "player", "on_reset_maxspeed", 1)
     RegisterHam(Ham_Weapon_WeaponIdle, "weapon_flashbang", "on_flashbang_idle")
+    RegisterHam(Ham_Item_Deploy, "weapon_hegrenade", "on_hegrenade_deploy", 1)
     RegisterHam(Ham_TraceAttack, "hostage_entity", "on_hostage_hurt")
     RegisterHam(Ham_TakeDamage, "hostage_entity", "on_hostage_hurt")
     RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_awp", "on_zoompistol_attack")
     RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_g3sg1", "on_zoompistol_attack")
     RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_sg550", "on_zoompistol_attack")
 
-    // Slap people shooting anything but the M249 in rambo rounds. Not the C4: planting
-    // is its "attack", and slapping a planter to death inside it crashes the server.
+    // Slap people shooting anything but the M249 in rambo rounds (planting the C4 too).
+    // The slap comes after the shot: see on_rambo_attack.
     new weaponName[32]
-    new const NOSHOT_BITSUM = (1<<CSW_KNIFE) | (1<<CSW_HEGRENADE) | (1<<CSW_FLASHBANG) | (1<<CSW_SMOKEGRENADE) | (1<<CSW_M249) | (1<<CSW_C4)
+    new const NOSHOT_BITSUM = (1<<CSW_KNIFE) | (1<<CSW_HEGRENADE) | (1<<CSW_FLASHBANG) | (1<<CSW_SMOKEGRENADE) | (1<<CSW_M249)
     for (new weapon = CSW_P228; weapon <= CSW_P90; weapon++) {
         if (~NOSHOT_BITSUM & 1<<weapon && get_weaponname(weapon, weaponName, charsmax(weaponName)))
             RegisterHam(Ham_Weapon_PrimaryAttack, weaponName, "on_rambo_attack")
@@ -658,6 +662,7 @@ start_new_round()
     remove_task(TASK_TELESWAP)
 
     for (new id = 1; id <= MAX_PLAYERS; id++) {
+        g_forcedAttack[id] = false
         g_frozen[id] = false
         remove_task(TASK_UNFREEZE + id)
         remove_task(TASK_RAMBO + id)
@@ -1081,15 +1086,48 @@ public task_rambo(taskid)
         cs_set_weapon_ammo(m249, 100)
 }
 
-// Rambos can't stop firing the M249: the server holds their fire button, which
-// works for bots too and can't be undone by tapping the mouse
+// Rambos can't stop firing the M249: the server holds their fire button, which works
+// for bots too and can't be undone by tapping the mouse. Humans also get +attack sent
+// to their client: the client only draws its own shots (impacts, sounds) when it knows
+// it is firing.
 public on_cmd_start(id, uc)
 {
-    if (g_mode != MODE_RAMBO || !is_user_alive(id) || get_user_weapon(id) != CSW_M249)
+    if (g_mode != MODE_RAMBO || !is_user_alive(id))
         return FMRES_IGNORED
 
-    set_uc(uc, UC_Buttons, get_uc(uc, UC_Buttons) | IN_ATTACK)
+    new buttons = get_uc(uc, UC_Buttons)
+    if (get_user_weapon(id) != CSW_M249) {
+        // Let go again when switching away, so the knife doesn't stab forever
+        if (g_forcedAttack[id]) {
+            g_forcedAttack[id] = false
+            client_cmd(id, "-attack")
+        }
+        return FMRES_IGNORED
+    }
+
+    if (!(buttons & IN_ATTACK) && !is_user_bot(id) && get_gametime() >= g_nextForcedAttack[id]) {
+        client_cmd(id, "+attack")
+        g_forcedAttack[id] = true
+        g_nextForcedAttack[id] = get_gametime() + 0.5
+    }
+
+    set_uc(uc, UC_Buttons, buttons | IN_ATTACK)
     return FMRES_HANDLED
+}
+
+// Rambos throw an HE the moment they draw it: no deploy or pin-pull animation, and no
+// way to hide behind it instead of firing. The game throws it on its next idle check,
+// then switches back to the M249 when no HE is left.
+public on_hegrenade_deploy(grenade)
+{
+    new id = pev(grenade, pev_owner)
+    if (g_mode != MODE_RAMBO || !(1 <= id <= MAX_PLAYERS) || !is_user_alive(id))
+        return
+
+    set_ent_data_float(grenade, "CBaseEntity", "m_flStartThrow", get_gametime())
+    set_ent_data_float(grenade, "CBaseEntity", "m_flReleaseThrow", get_gametime())
+    set_ent_data_float(grenade, "CBasePlayerWeapon", "m_flTimeWeaponIdle", 0.0)
+    set_ent_data_float(id, "CBaseMonster", "m_flNextAttack", 0.0)
 }
 
 public on_rambo_attack(weapon)

@@ -193,22 +193,24 @@ export default {
         case "paused":
           this.paused = true
           break
-        case "resumed":
-          this.paused = false
-          this.shame = []
-          break
         case "firstround":
           this.liveBanner++
-          this.paused = false
-          this.shame = []
           this.$refs.killfeed?.clear()
+          this.clearScreen()
           break
-        case "unpause":
-        case "newround":
+        // Every other round start (special rounds send their own event instead of
+        // 'round') and every unpause clears the screen. Their own sound plays after this.
         case "round":
-          this.stopSound()
-          this.overlay.show = false
-          this.shame = []
+        case "newround":
+        case "rambo":
+        case "leif":
+        case "bongintro":
+        case "unpause":
+          this.clearScreen()
+          break
+        // Follows 'unpause' (or a manual amx_pause): keep the unpause sound playing
+        case "resumed":
+          this.clearScreen(false)
           break
       }
 
@@ -464,6 +466,17 @@ export default {
       audio.play()
         .then(() => { this.soundBlocked = false; audio.pause() })
         .catch(this.onPlayError)
+    },
+
+    // Stops videos (and sounds) and hides the overlay, e.g. a teamkill or bomb video
+    clearScreen: function (sounds = true) {
+      this.paused = false
+      this.shame = []
+      if (sounds)
+        this.stopSound()
+      else
+        this.$refs.overlay.stopVideo()
+      this.overlay.show = false
     },
 
     stopSound: function () {
