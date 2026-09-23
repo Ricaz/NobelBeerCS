@@ -31,7 +31,11 @@ defineExpose({ playVideo, stopVideo, setVolume })
 <template>
 <div class="container-fluid overlay" v-show="overlay.show">
   <div class="overlay-body">
-    <span class="overlay-text" :class="{ summary: overlay.summary }">{{ overlay.text }}</span>
+    <div class="overlay-text" :class="{ summary: overlay.summary }">
+      <div v-for="(line, i) in overlay.lines" :key="i">
+        <span v-for="(part, j) in line" :key="j" :class="part.team">{{ part.text }}</span>
+      </div>
+    </div>
     <video ref="video" class="hidden" id="video">Video not available</video>
   </div>
 </div>
@@ -49,14 +53,28 @@ defineExpose({ playVideo, stopVideo, setVolume })
   text-shadow: 3px -1px 7px rgba(0,0,0,0.5);
 }
 
+/* Player names in their team's color, like the scoreboard */
+.overlay-text .CT {
+  color: #00abff;
+}
+
+.overlay-text .TERRORIST {
+  color: #ea403e;
+}
+
+.overlay-text .CT,
+.overlay-text .TERRORIST {
+  font-weight: 700;
+  text-shadow: 0 0 12px rgb(0 0 0 / 80%), 3px -1px 7px rgb(0 0 0 / 50%);
+}
+
 /* Several teamkills/suicides: header plus a line per killer */
 .overlay-text.summary {
   font-size: 40pt;
   line-height: 1.3;
-  white-space: pre-line;
 }
 
-.overlay-text.summary::first-line {
+.overlay-text.summary > :first-child {
   font-size: 52pt;
 }
 .overlay {

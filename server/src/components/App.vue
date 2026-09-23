@@ -26,7 +26,8 @@ export default {
       scores: [],
       audioElements: [],
       cooldowns: [],
-      overlay: { text: '', show: false, summary: false },
+      // lines: [ [ { text, team } ] ], names get their team's color
+      overlay: { lines: [], show: false, summary: false },
       // Teamkills and suicides since the game last resumed: { type: 'tk', killer, victim } | { type: 'suicide', player }
       shame: [],
       shameAt: 0,
@@ -144,7 +145,7 @@ export default {
           this.changeState(data.data)
           break
         case "bombexploded":
-          this.overlay.text = 'Allahu Akbar!'
+          this.overlay.lines = [ [ { text: 'Allahu Akbar!' } ] ]
           this.overlay.summary = false
           this.overlay.show = true
           break
@@ -293,41 +294,58 @@ export default {
       this.shame.push(data.cmd === 'tk' ? { type: 'tk', killer: first, victim: second } : { type: 'suicide', player: first })
       this.shameAt = now
 
-      this.overlay.text = this.shameText()
+      this.overlay.lines = this.shameLines()
       this.overlay.summary = this.shame.length > 1
       this.overlay.show = true
       return continuing
     },
 
-    // "ALSTRUP\nteamkilled\nCARO" for one event, otherwise a header and a line per killer:
-    // "3 teamkills + 1 suicide\nALSTRUP teamkilled CARO, emiL & Bob\nBob committed suicide"
-    shameText: function () {
-      const name = (id) => this.playerName(id)
+    // One event: "ALSTRUP / teamkilled / CARO". Several: a header and a line per killer,
+    // "3 teamkills + 1 suicide / ALSTRUP teamkilled CARO, emiL & Bob / Bob committed suicide".
+    // Returns lines of { text, team } parts, so names can be colored.
+    shameLines: function () {
+      const player = (id) => {
+        const p = this.scores.find((p) => p.id == id)
+        return { text: p?.name ?? '???', team: p?.team }
+      }
+      const text = (text) => ({ text })
+
       if (this.shame.length === 1) {
         const e = this.shame[0]
-        return e.type === 'tk' ? `${name(e.killer)}\nteamkilled\n${name(e.victim)}` : `${name(e.player)} committed suicide!`
+        return e.type === 'tk'
+          ? [ [ player(e.killer) ], [ text('teamkilled') ], [ player(e.victim) ] ]
+          : [ [ player(e.player), text(' committed suicide!') ] ]
       }
 
-      const victims = new Map() // killer => victims, in order of first teamkill
-      const lines = []
+      const victims = new Map() // killer => victim ids, in order of first teamkill
+      const order = []
       for (const e of this.shame) {
-        if (e.type === 'suicide') {
-          lines.push(`${name(e.player)} committed suicide`)
-        } else if (victims.has(e.killer)) {
-          victims.get(e.killer).push(name(e.victim))
-        } else {
-          victims.set(e.killer, [ name(e.victim) ])
-          lines.push(e.killer)
+        if (e.type === 'suicide')
+          order.push({ suicide: e.player })
+        else if (victims.has(e.killer))
+          victims.get(e.killer).push(e.victim)
+        else {
+          victims.set(e.killer, [ e.victim ])
+          order.push({ killer: e.killer })
         }
       }
 
-      const list = (names) => names.length > 1 ? `${names.slice(0, -1).join(', ')} & ${names.at(-1)}` : names[0]
+      // "A, B & C" with every name colored
+      const list = (ids) => ids.flatMap((id, i) => [
+        ...(i === 0 ? [] : [ text(i === ids.length - 1 ? ' & ' : ', ') ]),
+        player(id),
+      ])
       const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
       const teamkills = this.shame.filter((e) => e.type === 'tk').length
       const suicides = this.shame.length - teamkills
       const header = [ teamkills && plural(teamkills, 'teamkill'), suicides && plural(suicides, 'suicide') ].filter(Boolean).join(' + ')
 
-      return [ header, ...lines.map((line) => victims.has(line) ? `${name(line)} teamkilled ${list(victims.get(line))}` : line) ].join('\n')
+      return [
+        [ text(header) ],
+        ...order.map((line) => line.suicide
+          ? [ player(line.suicide), text(' committed suicide') ]
+          : [ player(line.killer), text(' teamkilled '), ...list(victims.get(line.killer)) ]),
+      ]
     },
 
     playMedia: function (file) {
