@@ -5,6 +5,7 @@ const COOLDOWN_EVENTS = [ 'grenade' ]
 // Teamkills and suicides that happen close together (without a pause in between)
 // are summed up on one overlay
 const SHAME_WINDOW = 3000
+const SHAME_HIDE_AFTER = 8000
 const KILL_EVENTS = [ 'kill', 'headshot', 'knife', 'grenade', 'tk', 'suicide', 'kniferound', 'bong' ]
 
 // A 10 ms silent WAV file, for testing whether the browser allows sound
@@ -45,6 +46,7 @@ export default {
       // Teamkills and suicides since the game last resumed: { type: 'tk', killer, victim } | { type: 'suicide', player }
       shame: [],
       shameAt: 0,
+      shameHideTimer: null,
       // End-of-map awards while they are shown
       awards: null,
       awardsTimer: null,
@@ -136,7 +138,7 @@ export default {
 
       // A second teamkill/suicide in the same pause only updates the overlay text,
       // it doesn't restart the video or sound
-      if ((data.cmd === 'tk' || data.cmd === 'suicide') && this.addToShame(data))
+      if ([ 'tk', 'suicide', 'knife' ].includes(data.cmd) && this.addToShame(data))
         return
 
       // Handle cooldowns
@@ -192,6 +194,7 @@ export default {
           break
         case "paused":
           this.paused = true
+          clearTimeout(this.shameHideTimer)
           break
         case "firstround":
           this.liveBanner++
@@ -349,14 +352,28 @@ export default {
         this.shame = []
 
       const continuing = this.shame.length > 0
-      this.shame.push(data.cmd === 'tk'
-        ? { type: 'tk', killer: first, victim: second, total: data.teamkillTotal }
-        : { type: 'suicide', player: first })
+      if (data.cmd === 'tk')
+        this.shame.push({ type: 'tk', killer: first, victim: second, total: data.teamkillTotal })
+      else if (data.cmd === 'knife')
+        this.shame.push({ type: 'knife', killer: first, victim: second })
+      else
+        this.shame.push({ type: 'suicide', player: first })
       this.shameAt = now
 
       this.overlay.lines = this.shameLines()
       this.overlay.summary = this.shame.length > 1
       this.overlay.show = true
+
+      // Paused games clear it on unpause. Without a pause (e.g. knife pausing off)
+      // nothing else would, so hide it after a while unless the game pauses.
+      clearTimeout(this.shameHideTimer)
+      this.shameHideTimer = setTimeout(() => {
+        if (!this.paused && this.shame.length) {
+          this.shame = []
+          this.overlay.show = false
+          this.$refs.overlay.stopVideo()
+        }
+      }, SHAME_HIDE_AFTER)
       return continuing
     },
 
@@ -379,22 +396,25 @@ export default {
 
       if (this.shame.length === 1) {
         const e = this.shame[0]
-        return e.type === 'tk'
-          ? [ [ player(e.killer) ], [ text('teamkilled') ], [ player(e.victim) ],
+        if (e.type === 'tk')
+          return [ [ player(e.killer) ], [ text('teamkilled') ], [ player(e.victim) ],
             ...(e.total ? [ [ small(`${player(e.killer).text}'s ${ordinal(e.total)} teamkill`) ] ] : []) ]
-          : [ [ player(e.player), text(' committed suicide!') ] ]
+        if (e.type === 'knife')
+          return [ [ player(e.victim) ], [ text('was knifed by') ], [ player(e.killer) ] ]
+        return [ [ player(e.player), text(' committed suicide!') ] ]
       }
 
-      const victims = new Map() // killer => victim ids, in order of first teamkill
+      // killer => victim ids, per kind, in order of each killer's first kill
+      const victims = { tk: new Map(), knife: new Map() }
       const order = []
       for (const e of this.shame) {
         if (e.type === 'suicide')
           order.push({ suicide: e.player })
-        else if (victims.has(e.killer))
-          victims.get(e.killer).push(e.victim)
+        else if (victims[e.type].has(e.killer))
+          victims[e.type].get(e.killer).push(e.victim)
         else {
-          victims.set(e.killer, [ e.victim ])
-          order.push({ killer: e.killer })
+          victims[e.type].set(e.killer, [ e.victim ])
+          order.push({ type: e.type, killer: e.killer })
         }
       }
 
@@ -404,16 +424,23 @@ export default {
         player(id),
       ])
       const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
-      const teamkills = this.shame.filter((e) => e.type === 'tk').length
-      const suicides = this.shame.length - teamkills
-      const header = [ teamkills && plural(teamkills, 'teamkill'), suicides && plural(suicides, 'suicide') ].filter(Boolean).join(' + ')
+      const count = (type) => this.shame.filter((e) => e.type === type).length
+      const header = [
+        count('tk') && plural(count('tk'), 'teamkill'),
+        count('knife') && plural(count('knife'), 'knife kill'),
+        count('suicide') && plural(count('suicide'), 'suicide'),
+      ].filter(Boolean).join(' + ')
 
       return [
         [ text(header) ],
-        ...order.map((line) => line.suicide
-          ? [ player(line.suicide), text(' committed suicide') ]
-          : [ player(line.killer), text(' teamkilled '), ...list(victims.get(line.killer)),
-            ...(total(line.killer) ? [ small(` · ${ordinal(total(line.killer))} teamkill`) ] : []) ]),
+        ...order.map((line) => {
+          if (line.suicide)
+            return [ player(line.suicide), text(' committed suicide') ]
+          if (line.type === 'knife')
+            return [ player(line.killer), text(' knifed '), ...list(victims.knife.get(line.killer)) ]
+          return [ player(line.killer), text(' teamkilled '), ...list(victims.tk.get(line.killer)),
+            ...(total(line.killer) ? [ small(` · ${ordinal(total(line.killer))} teamkill`) ] : []) ]
+        }),
       ]
     },
 
