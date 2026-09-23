@@ -106,6 +106,14 @@ function handleMessage(message, reply) {
 			reply(stats)
 	}
 
+	// This game's sips/kills/deaths per player, for the mod's noob buff. Only a request,
+	// so it isn't shown or saved.
+	if (message.cmd == 'playerstats') {
+		const players = tracker.board.players.filter((p) => p.active)
+		reply({ cmd: 'playerstats', args: players.map(({ id, sips, kills, deaths }) => ({ id, sips, kills, deaths })) })
+		return
+	}
+
 	if (message.cmd == 'balance') {
 		let balanced = tracker.autoBalance(message.args.games)
 		console.log('balanced: ', balanced)

@@ -29,10 +29,12 @@
 #define ROUND_ENDING_WARNING 19.0
 #define SOCKET_RETRY_DELAY 10.0
 
-// Noob buff: free gear after this many rounds in a row without a kill (additive)
-#define NOOBBUFF_ARMOR_ROUNDS 3
+// Noob buff: free gear after this many rounds in a row without a kill (additive),
+// for players in the lower half by sips with fewer kills than deaths
+#define NOOBBUFF_VEST_ROUNDS 2
+#define NOOBBUFF_HELMET_ROUNDS 3
 #define NOOBBUFF_GRENADES_ROUNDS 4
-#define NOOBBUFF_RIFLE_ROUNDS 5
+#define NOOBBUFF_FULL_ROUNDS 5
 
 const PRIMARY_WEAPONS = (1<<CSW_SCOUT) | (1<<CSW_XM1014) | (1<<CSW_MAC10) | (1<<CSW_AUG) | (1<<CSW_UMP45)
     | (1<<CSW_SG550) | (1<<CSW_GALIL) | (1<<CSW_FAMAS) | (1<<CSW_AWP) | (1<<CSW_MP5NAVY) | (1<<CSW_M249)
@@ -53,8 +55,9 @@ enum (+= 100)
     TASK_MONEY_CHECK,
     TASK_FLASH_PROTECTION,
     TASK_MODE_ANNOUNCE,
-    TASK_BALANCE_POLL,
+    TASK_REPLY_POLL,
     TASK_BALANCE_TIMEOUT,
+    TASK_STATS_TIMEOUT,
     TASK_PAUSE_ACK
 }
 
@@ -145,6 +148,14 @@ new bool:g_flashProtectionActive
 new bool:g_frozen[MAX_PLAYERS + 1]
 new g_roundsWithoutKill[MAX_PLAYERS + 1]
 new bool:g_killedThisRound[MAX_PLAYERS + 1]
+// This game's sips/kills/deaths per player, from the web app
+new bool:g_hasStats[MAX_PLAYERS + 1]
+new g_statSips[MAX_PLAYERS + 1]
+new g_statKills[MAX_PLAYERS + 1]
+new g_statDeaths[MAX_PLAYERS + 1]
+new bool:g_awaitingBalance
+new bool:g_awaitingStats
+new bool:g_warnedNoStats
 new g_roundStartMoney[MAX_PLAYERS + 1]
 new g_lastWeapon[MAX_PLAYERS + 1]
 new g_lastTeam[MAX_PLAYERS + 1][16]
@@ -434,6 +445,7 @@ public client_putinserver(id)
     g_frozen[id] = false
     g_roundsWithoutKill[id] = 0
     g_killedThisRound[id] = false
+    g_hasStats[id] = false
     g_lastWeapon[id] = 0
     g_lastTeam[id][0] = 0
 }
@@ -508,43 +520,74 @@ public on_player_spawn(id)
         give_noob_buff(id)
 }
 
-// Free gear for players without a kill for a while. The tiers add up, and only
-// missing items are given (CS allows 1 HE, 2 flashbangs and 1 smoke grenade).
+// Free gear for struggling players without a kill for a while. The tiers add up,
+// and only missing items are given (CS allows 1 HE, 2 flashbangs and 1 smoke grenade).
 give_noob_buff(id)
 {
     new rounds = g_roundsWithoutKill[id]
-    if (rounds < NOOBBUFF_ARMOR_ROUNDS)
+    if (rounds < NOOBBUFF_VEST_ROUNDS || !is_struggling(id))
         return
 
     new given[96]
-    give_item(id, "item_assaultsuit")
-    add(given, charsmax(given), "vest + helmet")
-    if (!user_has_weapon(id, CSW_HEGRENADE)) {
-        give_item(id, "weapon_hegrenade")
-        add(given, charsmax(given), ", HE")
+    new CsArmorType:armor
+    cs_get_user_armor(id, armor)
+    if (rounds >= NOOBBUFF_HELMET_ROUNDS || armor == CS_ARMOR_VESTHELM) {
+        cs_set_user_armor(id, 100, CS_ARMOR_VESTHELM)
+        add(given, charsmax(given), "vest + helmet")
+    } else {
+        cs_set_user_armor(id, 100, CS_ARMOR_KEVLAR)
+        add(given, charsmax(given), "vest")
     }
 
     if (rounds >= NOOBBUFF_GRENADES_ROUNDS) {
+        if (!user_has_weapon(id, CSW_HEGRENADE)) {
+            give_item(id, "weapon_hegrenade")
+            add(given, charsmax(given), ", HE")
+        }
+        // One flashbang, both from the full kit on
         new flashbangs = user_has_weapon(id, CSW_FLASHBANG) ? cs_get_user_bpammo(id, CSW_FLASHBANG) : 0
-        for (new i = flashbangs; i < 2; i++)
+        new wanted = rounds >= NOOBBUFF_FULL_ROUNDS ? 2 : 1
+        for (new i = flashbangs; i < wanted; i++)
             give_item(id, "weapon_flashbang")
-        if (flashbangs < 2)
-            add(given, charsmax(given), ", flashbangs")
+        if (flashbangs < wanted)
+            add(given, charsmax(given), wanted - flashbangs > 1 ? ", flashbangs" : ", flashbang")
+    }
+
+    if (rounds >= NOOBBUFF_FULL_ROUNDS) {
         if (!user_has_weapon(id, CSW_SMOKEGRENADE)) {
             give_item(id, "weapon_smokegrenade")
             add(given, charsmax(given), ", smoke")
         }
+
+        new weapons[32], num
+        if (!(get_user_weapons(id, weapons, num) & PRIMARY_WEAPONS) && !cs_get_user_shield(id)) {
+            new bool:terrorist = cs_get_user_team(id) == CS_TEAM_T
+            give_item(id, terrorist ? "weapon_ak47" : "weapon_m4a1")
+            cs_set_user_bpammo(id, terrorist ? CSW_AK47 : CSW_M4A1, 90)
+            add(given, charsmax(given), terrorist ? ", AK-47" : ", M4A1")
+        }
     }
 
-    new weapons[32], num
-    if (rounds >= NOOBBUFF_RIFLE_ROUNDS && !(get_user_weapons(id, weapons, num) & PRIMARY_WEAPONS) && !cs_get_user_shield(id)) {
-        new bool:terrorist = cs_get_user_team(id) == CS_TEAM_T
-        give_item(id, terrorist ? "weapon_ak47" : "weapon_m4a1")
-        cs_set_user_bpammo(id, terrorist ? CSW_AK47 : CSW_M4A1, 90)
-        add(given, charsmax(given), terrorist ? ", AK-47" : ", M4A1")
-    }
+    // Server log only, players aren't told
+    log_amx("Noob buff: %n (%d rounds without a kill, %d/%d K/D, %d sips) got %s",
+        id, rounds, g_statKills[id], g_statDeaths[id], g_statSips[id], given)
+}
 
-    log_amx("Noob buff: %n (%d rounds without a kill) got %s", id, rounds, given)
+// Fewer kills than deaths, and at least half of the players have drunk more
+bool:is_struggling(id)
+{
+    if (!g_hasStats[id] || g_statKills[id] >= g_statDeaths[id])
+        return false
+
+    new total, higher
+    for (new other = 1; other <= MAX_PLAYERS; other++) {
+        if (!g_hasStats[other] || !is_user_connected(other))
+            continue
+        total++
+        if (g_statSips[other] > g_statSips[id])
+            higher++
+    }
+    return higher * 2 >= total
 }
 
 public on_reset_maxspeed(id)
@@ -679,6 +722,10 @@ public on_round_end()
         send_event("winstreak")
 
     count_rounds_without_kill()
+
+    // Fresh sips/kills/deaths for the noob buff when players spawn next round
+    if (g_setting[SET_NOOBBUFF])
+        request_player_stats()
 }
 
 count_rounds_without_kill()
@@ -1326,45 +1373,103 @@ request_balance(games)
     send_command("balance", args)
     json_free(args)
 
-    // The response arrives on the same UDP socket
-    remove_task(TASK_BALANCE_POLL)
+    g_awaitingBalance = true
     remove_task(TASK_BALANCE_TIMEOUT)
-    set_task(0.1, "task_balance_poll", TASK_BALANCE_POLL, _, _, "a", 30)
     set_task(3.5, "task_balance_timeout", TASK_BALANCE_TIMEOUT)
+    expect_reply()
 }
 
-public task_balance_poll()
+request_player_stats()
 {
-    if (!g_socket || !socket_is_readable(g_socket, 0))
-        return
+    send_event_always("playerstats")
+    g_awaitingStats = true
+    remove_task(TASK_STATS_TIMEOUT)
+    set_task(3.0, "task_stats_timeout", TASK_STATS_TIMEOUT)
+    expect_reply()
+}
 
-    static buf[2048]
-    if (socket_recv(g_socket, buf, charsmax(buf)) <= 0)
-        return
+// Replies arrive on the same UDP socket; poll it while one is expected
+expect_reply()
+{
+    if (!task_exists(TASK_REPLY_POLL))
+        set_task(0.1, "task_reply_poll", TASK_REPLY_POLL, _, _, "b")
+}
 
-    remove_task(TASK_BALANCE_POLL)
-    remove_task(TASK_BALANCE_TIMEOUT)
-    apply_balance(buf)
+public task_reply_poll()
+{
+    static buf[4096]
+    while (g_socket && socket_is_readable(g_socket, 0)) {
+        if (socket_recv(g_socket, buf, charsmax(buf)) <= 0)
+            break
+        handle_reply(buf)
+    }
+
+    if (!g_awaitingBalance && !g_awaitingStats)
+        remove_task(TASK_REPLY_POLL)
 }
 
 public task_balance_timeout()
 {
+    g_awaitingBalance = false
     log_amx("Balance: no reply from the web app at %s:%d", g_serverHost, g_serverPort)
 }
 
-apply_balance(const data[])
+public task_stats_timeout()
 {
-    new JSON:response = json_parse(data)
-    if (response == Invalid_JSON) {
-        log_amx("Balance: could not read the web app's reply")
-        return
-    }
-    if (!json_is_array(response)) {
-        log_amx("Balance: unexpected reply from the web app")
-        json_free(response)
+    g_awaitingStats = false
+    arrayset(g_hasStats, false, sizeof g_hasStats)
+    if (!g_warnedNoStats)
+        log_amx("Noob buff: no player stats from the web app at %s:%d, no buffs until it replies", g_serverHost, g_serverPort)
+    g_warnedNoStats = true
+}
+
+// Balance replies are an array of { steamid, team },
+// player stats { cmd: "playerstats", args: [ { id, sips, kills, deaths } ] }
+handle_reply(const data[])
+{
+    new JSON:reply = json_parse(data)
+    if (reply == Invalid_JSON) {
+        log_amx("Could not read a reply from the web app")
         return
     }
 
+    new cmd[32]
+    if (json_is_array(reply) && g_awaitingBalance) {
+        g_awaitingBalance = false
+        remove_task(TASK_BALANCE_TIMEOUT)
+        apply_balance(reply)
+    } else if (json_is_object(reply) && json_object_get_string(reply, "cmd", cmd, charsmax(cmd)) && equal(cmd, "playerstats")) {
+        g_awaitingStats = false
+        g_warnedNoStats = false
+        remove_task(TASK_STATS_TIMEOUT)
+        apply_player_stats(reply)
+    }
+    json_free(reply)
+}
+
+apply_player_stats(JSON:reply)
+{
+    arrayset(g_hasStats, false, sizeof g_hasStats)
+
+    new JSON:list = json_object_get_value(reply, "args")
+    new playerId[MAX_AUTHID_LENGTH]
+    for (new i, count = json_array_get_count(list); i < count; i++) {
+        new JSON:entry = json_array_get_value(list, i)
+        json_object_get_string(entry, "id", playerId, charsmax(playerId))
+        new id = find_player_by_id(playerId)
+        if (id) {
+            g_hasStats[id] = true
+            g_statSips[id] = json_object_get_number(entry, "sips")
+            g_statKills[id] = json_object_get_number(entry, "kills")
+            g_statDeaths[id] = json_object_get_number(entry, "deaths")
+        }
+        json_free(entry)
+    }
+    json_free(list)
+}
+
+apply_balance(JSON:response)
+{
     new playerId[MAX_AUTHID_LENGTH], team[8], moves[512]
     for (new i, count = json_array_get_count(response); i < count; i++) {
         new JSON:entry = json_array_get_value(response, i)
@@ -1383,7 +1488,6 @@ apply_balance(const data[])
         }
     }
 
-    json_free(response)
     log_amx("Balance: %s", moves[0] ? moves : "teams unchanged")
 }
 
@@ -1748,6 +1852,7 @@ public cmd_nobel_serverstart(id, level, cid)
     g_setting[SET_FLASHPROTECTION] = false
     arrayset(g_roundsWithoutKill, 0, sizeof g_roundsWithoutKill)
     arrayset(g_killedThisRound, false, sizeof g_killedThisRound)
+    arrayset(g_hasStats, false, sizeof g_hasStats)
 
     start_new_round()
     set_state(STATE_STARTED)

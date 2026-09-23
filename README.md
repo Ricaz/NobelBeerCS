@@ -67,9 +67,7 @@ All the commands are toggleable.
   * You cannot stop firing the gun
   * Kinda glitchy, especially if people try to circumvent the safeguards against using other weapons 
 * Noob buff (`nobel_noobbuff`, on by default)
-  * Free gear for players without a kill for a while, handed out when they spawn:
-    3 rounds: vest + helmet and HE; 4 rounds: also flashbangs and smoke;
-    5 rounds: also an AK-47/M4A1 with ammo if they have no primary weapon
+  * Compensates badly performing players
 * Autobalance (`nobel_balance <games>`, runs automatically with `nobel_start`)
   * Rates each player by kills/deaths over their own last `<games>` games (50 by default)
   * Picks a random split among the ones where the teams' average ratings are within 3%,
