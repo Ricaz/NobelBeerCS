@@ -36,6 +36,8 @@ export default {
       awardsTimer: null,
       // The scoreboard as it was when the game ended, shown with the awards
       finalScores: null,
+      // Bumped on every game start to show the "LIVE LIVE LIVE" banner (0 = hidden)
+      liveBanner: 0,
       socket: null,
       // 'lan': the active LAN (live scoreboard or LAN stats), 'all': all-time stats
       mode: 'all',
@@ -162,6 +164,8 @@ export default {
           this.finalScores = data.data.scores
           clearTimeout(this.awardsTimer)
           this.awardsTimer = setTimeout(() => {
+            // The LAN stats slide in, also on a page opened during the awards
+            this.animate = true
             this.awards = null
             this.finalScores = null
           }, data.data.left)
@@ -174,6 +178,7 @@ export default {
           this.shame = []
           break
         case "firstround":
+          this.liveBanner++
           this.paused = false
           this.shame = []
           this.$refs.killfeed?.clear()
@@ -280,8 +285,14 @@ export default {
     // Game start: the LAN stats fly out to the sides and collapse, so the
     // fresh scoreboard below moves up. Game end: the reverse.
     animateLanStats: function (el, done, entering) {
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+      // Not on page load (the first state), and never on top of a running animation:
+      // stop that first, and only let the latest one finish
+      el.getAnimations({ subtree: true }).forEach((a) => a.cancel())
+      if (!this.animate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        el.style.overflow = ''
         return done()
+      }
+      const token = el.lanStatsAnimation = {}
 
       const timing = { duration: 700, easing: 'cubic-bezier(.4, 0, .2, 1)', fill: 'both' }
       const frames = (shown, hidden) => entering ? [ hidden, shown ] : [ shown, hidden ]
@@ -293,6 +304,8 @@ export default {
       el.querySelector('.scores-lan')?.animate(frames({ transform: 'none' }, { transform: 'translateX(100%)' }), timing)
 
       collapse.onfinish = () => {
+        if (el.lanStatsAnimation !== token)
+          return
         // Let the block size itself again after entering
         el.getAnimations({ subtree: true }).forEach((a) => a.cancel())
         el.style.overflow = ''
@@ -492,6 +505,7 @@ export default {
   </div>
   <Overlay ref="overlay" :overlay="overlay" />
   <KillFeed ref="killfeed" :paused="paused" />
+  <LiveBanner v-if="liveBanner" :key="liveBanner" @done="liveBanner = 0" />
   <Transition name="awards-fade">
     <AwardsBar v-if="awards?.length" :awards="awards" />
   </Transition>
