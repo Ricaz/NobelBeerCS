@@ -606,6 +606,8 @@ export default {
 }
 
 .status {
+  position: relative;
+  z-index: 10000;
   display: grid;
   grid-template-columns: max-content max-content;
   column-gap: .6rem;
@@ -727,12 +729,17 @@ export default {
   visibility: hidden;
 }
 
-/* The page behind an overlay: plain opacity, which is cheap to animate */
-.page-content {
+/* The page behind an overlay fades (plain opacity, cheap to animate), except the
+   status with the volume slider, which stays on top of overlays and videos */
+.page-content .pages,
+.page-content #lan-select,
+.page-content .mode-buttons {
   transition: opacity .3s;
 }
 
-.page-content.muted {
+.page-content.muted .pages,
+.page-content.muted #lan-select,
+.page-content.muted .mode-buttons {
   opacity: .15;
 }
 

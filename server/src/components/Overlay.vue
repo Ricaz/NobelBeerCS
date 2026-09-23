@@ -88,6 +88,8 @@ defineExpose({ playVideo, stopVideo, setVolume })
   font-size: 52pt;
 }
 .overlay {
+  /* Only shows things: clicks go through to the page (e.g. the volume slider) */
+  pointer-events: none;
   position: absolute;
   top: 0;
   color: black;
