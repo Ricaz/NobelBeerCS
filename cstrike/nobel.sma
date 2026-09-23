@@ -51,6 +51,7 @@ enum (+= 100)
     TASK_UNFREEZE = 100,
     TASK_RAMBO,
     TASK_ZOOMSLAP,
+    TASK_RAMBO_SLAP,
     TASK_PERIODIC,
     TASK_MAPEND_PAUSE,
     TASK_ROUND_ENDING,
@@ -173,7 +174,6 @@ new bool:g_warnedNoStats
 // Scoreboard sips are shown in the Money column (the Account message)
 new g_msgAccount
 new g_roundStartMoney[MAX_PLAYERS + 1]
-new g_lastWeapon[MAX_PLAYERS + 1]
 new g_lastTeam[MAX_PLAYERS + 1][16]
 
 new g_mapName[32]
@@ -203,7 +203,6 @@ public plugin_init()
     register_event("DeathMsg", "on_death", "a")
     register_event("30", "on_intermission", "a")
     register_event("TeamInfo", "on_team_info", "a")
-    register_event("CurWeapon", "on_cur_weapon", "be", "1=1")
     register_event("TextMsg", "on_hostages_rescued", "a", "2&#All_Hostages_R")
     register_event("TextMsg", "on_target_saved", "a", "2&#Target_Saved")
     register_event("ScreenFade", "on_screenfade", "be", "4=255", "5=255", "6=255", "7>199")
@@ -215,6 +214,7 @@ public plugin_init()
     register_logevent("on_hostage_touched", 3, "2=Touched_A_Hostage")
 
     RegisterHam(Ham_Spawn, "player", "on_player_spawn", 1)
+    register_forward(FM_CmdStart, "on_cmd_start")
     // The newer CS 1.6 scoreboard's Money column; only sent by updated game servers
     g_msgAccount = get_user_msgid("Account")
     if (g_msgAccount)
@@ -227,9 +227,10 @@ public plugin_init()
     RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_g3sg1", "on_zoompistol_attack")
     RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_sg550", "on_zoompistol_attack")
 
-    // Slap people shooting anything but the M249 in rambo rounds
+    // Slap people shooting anything but the M249 in rambo rounds. Not the C4: planting
+    // is its "attack", and slapping a planter to death inside it crashes the server.
     new weaponName[32]
-    new const NOSHOT_BITSUM = (1<<CSW_KNIFE) | (1<<CSW_HEGRENADE) | (1<<CSW_FLASHBANG) | (1<<CSW_SMOKEGRENADE) | (1<<CSW_M249)
+    new const NOSHOT_BITSUM = (1<<CSW_KNIFE) | (1<<CSW_HEGRENADE) | (1<<CSW_FLASHBANG) | (1<<CSW_SMOKEGRENADE) | (1<<CSW_M249) | (1<<CSW_C4)
     for (new weapon = CSW_P228; weapon <= CSW_P90; weapon++) {
         if (~NOSHOT_BITSUM & 1<<weapon && get_weaponname(weapon, weaponName, charsmax(weaponName)))
             RegisterHam(Ham_Weapon_PrimaryAttack, weaponName, "on_rambo_attack")
@@ -467,7 +468,6 @@ public client_putinserver(id)
     g_roundsWithoutKill[id] = 0
     g_killedThisRound[id] = false
     g_hasStats[id] = false
-    g_lastWeapon[id] = 0
     g_lastTeam[id][0] = 0
 }
 
@@ -517,7 +517,6 @@ public on_player_spawn(id)
         return
 
     client_cmd(id, "-attack")
-    g_lastWeapon[id] = 0
 
     if (!g_enabled)
         return
@@ -1073,33 +1072,43 @@ public task_rambo(taskid)
     if (!is_user_alive(id))
         return
 
-    give_item(id, "weapon_hegrenade")
-    if (get_user_weapon(id) == CSW_M249) {
-        client_cmd(id, "+attack")
-        cs_set_weapon_ammo(find_ent_by_owner(-1, "weapon_m249", id), 100)
-    } else {
-        client_cmd(id, "-attack;wait;-attack")
-    }
+    if (!user_has_weapon(id, CSW_HEGRENADE))
+        give_item(id, "weapon_hegrenade")
+
+    // Keep the M249 loaded
+    new m249 = find_ent_by_owner(-1, "weapon_m249", id)
+    if (m249 > 0)
+        cs_set_weapon_ammo(m249, 100)
 }
 
-// Rambos cannot stop firing the M249
-public on_cur_weapon(id)
+// Rambos can't stop firing the M249: the server holds their fire button, which
+// works for bots too and can't be undone by tapping the mouse
+public on_cmd_start(id, uc)
 {
-    if (g_mode != MODE_RAMBO)
-        return
+    if (g_mode != MODE_RAMBO || !is_user_alive(id) || get_user_weapon(id) != CSW_M249)
+        return FMRES_IGNORED
 
-    new weapon = read_data(2)
-    if (weapon == g_lastWeapon[id])
-        return
-
-    g_lastWeapon[id] = weapon
-    client_cmd(id, weapon == CSW_M249 ? "+attack" : "-attack")
+    set_uc(uc, UC_Buttons, get_uc(uc, UC_Buttons) | IN_ATTACK)
+    return FMRES_HANDLED
 }
 
 public on_rambo_attack(weapon)
 {
-    if (g_mode == MODE_RAMBO)
-        user_slap(pev(weapon, pev_owner), random_num(40, 60))
+    if (g_mode != MODE_RAMBO)
+        return
+
+    // Slap after the shot, never during it: a slap can kill, and killing a player
+    // inside their weapon's own code crashes the server
+    new owner = pev(weapon, pev_owner)
+    if (1 <= owner <= MAX_PLAYERS && !task_exists(TASK_RAMBO_SLAP + owner))
+        set_task(0.1, "task_rambo_slap", TASK_RAMBO_SLAP + owner)
+}
+
+public task_rambo_slap(taskid)
+{
+    new id = taskid - TASK_RAMBO_SLAP
+    if (g_mode == MODE_RAMBO && is_user_alive(id))
+        user_slap(id, random_num(40, 60))
 }
 
 // ----------------------------------------------------------------------------
