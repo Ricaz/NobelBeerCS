@@ -728,7 +728,7 @@ public on_round_start()
 }
 
 // ----------------------------------------------------------------------------
-// Teleswap: a random living T and CT swap places, with a short flash
+// Teleswap: a random living T and CT swap places, with a short yellow flash
 // ----------------------------------------------------------------------------
 
 public task_teleswap()
@@ -781,7 +781,7 @@ teleswap(first, second)
     }
 }
 
-// White screen fading out over one second, like a short flashbang
+// Bright yellow screen fading out over one second, like a short flashbang
 flash_fade(id)
 {
     message_begin(MSG_ONE, g_msgScreenFade, _, id)
@@ -789,8 +789,8 @@ flash_fade(id)
     write_short(0) // hold time
     write_short(0x0000) // FFADE_IN: from the color back to normal
     write_byte(255) // r
-    write_byte(255) // g
-    write_byte(255) // b
+    write_byte(240) // g
+    write_byte(0) // b
     write_byte(255) // a
     message_end()
 }
