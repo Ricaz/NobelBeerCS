@@ -34,6 +34,8 @@ export default {
       // End-of-map awards while they are shown
       awards: null,
       awardsTimer: null,
+      // The scoreboard as it was when the game ended, shown with the awards
+      finalScores: null,
       socket: null,
       // 'lan': the active LAN (live scoreboard or LAN stats), 'all': all-time stats
       mode: 'all',
@@ -53,6 +55,9 @@ export default {
 
   computed: {
     activeScores() {
+      // Right after a game, the snapshot: by then everyone has left and switched teams
+      if (this.finalScores)
+        return board("Final scoreboard", HEADERS, this.finalScores, true)
       const live = this.state === 'live' || this.state === 'ended'
       return board("Scoreboard", HEADERS, this.scores.filter(p => p.active === true), live)
     },
@@ -154,8 +159,12 @@ export default {
           break
         case "awards":
           this.awards = data.data.awards
+          this.finalScores = data.data.scores
           clearTimeout(this.awardsTimer)
-          this.awardsTimer = setTimeout(() => { this.awards = null }, data.data.left)
+          this.awardsTimer = setTimeout(() => {
+            this.awards = null
+            this.finalScores = null
+          }, data.data.left)
           break
         case "paused":
           this.paused = true
@@ -186,8 +195,10 @@ export default {
       this.state = state
 
       // A new game takes over the screen
-      if (state === 'live')
+      if (state === 'live') {
         this.awards = null
+        this.finalScores = null
+      }
 
       // Slide on automatic switches too, except for the first state on page load
       if (this.hasState)

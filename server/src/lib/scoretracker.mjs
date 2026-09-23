@@ -512,18 +512,28 @@ export default class Tracker extends EventEmitter {
 		this.saveScoreboard(true)
 		this.running = false
 
-		// Awards for real games only, shown for a few minutes
+		// Awards for real games only, shown for a few minutes together with a snapshot of
+		// the final scoreboard: after the map change everyone disconnects and switches teams
 		const game = this.getScoreboard()
 		if (isRealGame(game)) {
-			this.lastAwards = { awards: awards(game.scores), until: endTime + AWARDS_SHOWN_FOR }
+			this.lastAwards = {
+				awards: awards(game.scores),
+				scores: JSON.parse(JSON.stringify(game.scores.filter((p) => p.active))),
+				until: endTime + AWARDS_SHOWN_FOR,
+			}
 			this.emit('awards', this.currentAwards())
 		}
 	}
 
-	// The last game's awards while they are still shown, with the time left (ms)
+	// The last game's awards and final scoreboard while they are still shown, with
+	// the time left (ms). Discarded afterwards.
 	currentAwards() {
 		const left = (this.lastAwards?.until ?? 0) - Date.now()
-		return left > 0 ? { awards: this.lastAwards.awards, left } : null
+		if (left <= 0) {
+			this.lastAwards = null
+			return null
+		}
+		return { awards: this.lastAwards.awards, scores: this.lastAwards.scores, left }
 	}
 
 	// All teamkills by a player, over all history including the current game
