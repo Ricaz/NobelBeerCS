@@ -7,6 +7,8 @@ const SHAME_WINDOW = 3000
 const SHAME_HIDE_AFTER = 8000
 // Mario Kart's knife kills (back to the start) go in the killfeed too
 const KILL_EVENTS = [ 'kill', 'headshot', 'knife', 'grenade', 'tk', 'suicide', 'kniferound', 'bong', 'mk_knifed' ]
+// Played on repeat: the Mario Kart race music and the rambo round's song
+const LOOPING_EVENTS = [ 'mk_go', 'rambo' ]
 
 // A 10 ms silent WAV file, for testing whether the browser allows sound
 function silentWav() {
@@ -42,7 +44,8 @@ export default {
       // ids of players dead this round
       dead: [],
       audioElements: [],
-      // The Mario Kart race music, which loops until the race is won
+      // The Mario Kart race music or the rambo song, which loops until the race is
+      // won or the round ends (pauses don't stop it)
       loopingSound: null,
       cooldowns: [],
       // lines: [ [ { text, team } ] ], names get their team's color
@@ -244,8 +247,10 @@ export default {
         case "leif":
         case "bongintro":
         case "mariokart":
-        case "unpause":
           this.clearScreen()
+          break
+        case "unpause":
+          this.clearScreen(true, true)
           break
         // Follows 'unpause' (or a manual amx_pause): keep the unpause sound playing
         case "resumed":
@@ -253,9 +258,9 @@ export default {
           break
       }
 
-      // The Mario Kart race music loops (the tracks are shorter than the round), until
-      // the race is won or the round ends
-      this.playMedia(data.media, data.cmd === 'mk_go')
+      // The Mario Kart race music and the rambo song loop (they're shorter than the
+      // round), until the race is won or the round ends
+      this.playMedia(data.media, LOOPING_EVENTS.includes(data.cmd))
     },
 
     changeState: function (state) {
@@ -557,21 +562,22 @@ export default {
     },
 
     // Stops videos (and sounds) and hides the overlay, e.g. a teamkill or bomb video
-    clearScreen: function (sounds = true) {
+    clearScreen: function (sounds = true, keepLoop = false) {
       this.paused = false
       this.shame = []
       if (sounds)
-        this.stopSound()
+        this.stopSound(keepLoop)
       else
         this.$refs.overlay.stopVideo()
       this.overlay.show = false
     },
 
-    stopSound: function () {
+    stopSound: function (keepLoop = false) {
       this.$refs.overlay.stopVideo()
-      this.audioElements.forEach((audio) => audio.pause())
-      this.audioElements = []
-      this.loopingSound = null
+      const loop = keepLoop ? this.loopingSound : null
+      this.audioElements.filter((audio) => audio !== loop).forEach((audio) => audio.pause())
+      this.audioElements = loop ? [ loop ] : []
+      this.loopingSound = loop
     },
 
     volumeChange: function () {

@@ -105,6 +105,7 @@ enum (+= 100)
     TASK_RAMBO,
     TASK_ZOOMSLAP,
     TASK_RAMBO_SLAP,
+    TASK_RAMBO_C4,
     TASK_PERIODIC,
     TASK_MAPEND_PAUSE,
     TASK_ROUND_ENDING,
@@ -406,7 +407,7 @@ public plugin_init()
     RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_g3sg1", "on_zoompistol_attack")
     RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_sg550", "on_zoompistol_attack")
 
-    // Slap people shooting anything but the M249 in rambo rounds (planting the C4 too).
+    // Slap people shooting anything but the M249 in rambo rounds.
     // The slap comes after the shot: see on_rambo_attack.
     new weaponName[32]
     new const NOSHOT_BITSUM = (1<<CSW_KNIFE) | (1<<CSW_HEGRENADE) | (1<<CSW_FLASHBANG) | (1<<CSW_SMOKEGRENADE) | (1<<CSW_M249)
@@ -720,12 +721,9 @@ public on_player_spawn(id)
     }
 
     if (g_mode == MODE_RAMBO) {
-        strip_user_weapons(id)
         set_user_health(id, 200)
-        give_item(id, "weapon_m249")
         give_item(id, "item_assaultsuit")
-        give_item(id, "weapon_hegrenade")
-        cs_set_user_bpammo(id, CSW_M249, 10000)
+        give_rambo_weapons(id)
         set_task(5.0, "task_rambo", TASK_RAMBO + id, _, _, "b")
     }
 
@@ -874,6 +872,7 @@ start_new_round()
     }
     client_cmd(0, "-attack")
     reset_kart()
+    remove_task(TASK_RAMBO_C4)
 
     if (g_endModeAfterRound) {
         end_round_mode()
@@ -890,6 +889,10 @@ start_new_round()
         new Float:delay = get_cvar_float("mp_freezetime") - 3.0
         set_task(delay > 0.1 ? delay : 0.1, "task_kart_countdown", TASK_KART_COUNTDOWN)
     }
+
+    // No bomb in the rambo round: take it off whoever the round restart handed it to
+    if (g_mode == MODE_RAMBO)
+        set_task(0.1, "task_rambo_remove_c4", TASK_RAMBO_C4)
 
     if (g_mode != MODE_NORMAL)
         set_task(1.0, "task_announce_mode", TASK_MODE_ANNOUNCE)
@@ -1314,6 +1317,24 @@ public task_announce_mode()
     server_exec()
 }
 
+give_rambo_weapons(id)
+{
+    strip_user_weapons(id)
+    give_item(id, "weapon_m249")
+    give_item(id, "weapon_hegrenade")
+    cs_set_user_bpammo(id, CSW_M249, 10000)
+}
+
+public task_rambo_remove_c4()
+{
+    new players[MAX_PLAYERS], num
+    get_players(players, num, "a")
+    for (new i; i < num; i++) {
+        if (user_has_weapon(players[i], CSW_C4))
+            give_rambo_weapons(players[i])
+    }
+}
+
 public task_rambo(taskid)
 {
     new id = taskid - TASK_RAMBO
@@ -1478,19 +1499,21 @@ public task_kart_countdown()
     send_event("mk_countdown")
 }
 
-// No buying in the Mario Kart round, however it's tried (menus, commands, autobuy)
+// No buying in the Mario Kart and rambo rounds, however it's tried (menus, commands,
+// autobuy)
 public CS_OnBuyAttempt(id, item)
 {
-    if (g_mode != MODE_KART)
-        return PLUGIN_CONTINUE
-
-    client_print(id, print_center, "No shopping in Mario Kart!")
+    switch (g_mode) {
+        case MODE_KART: client_print(id, print_center, "No shopping in Mario Kart!")
+        case MODE_RAMBO: client_print(id, print_center, "Rambo doesn't go shopping!")
+        default: return PLUGIN_CONTINUE
+    }
     return PLUGIN_HANDLED
 }
 
 public CS_OnBuy(id, item)
 {
-    return g_mode == MODE_KART ? PLUGIN_HANDLED : PLUGIN_CONTINUE
+    return g_mode == MODE_KART || g_mode == MODE_RAMBO ? PLUGIN_HANDLED : PLUGIN_CONTINUE
 }
 
 add_money(id, amount)

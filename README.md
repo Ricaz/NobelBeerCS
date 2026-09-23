@@ -65,6 +65,7 @@ All the commands are toggleable.
 * Rambo-mode (`nobel_rambo`)
   * In the next round, everyone gets an M249 with infinite ammo and a continuous supply of HE grenades
   * You cannot stop firing the gun
+  * No bomb and no buying, and a song plays on repeat throughout the round
   * Kinda glitchy, especially if people try to circumvent the safeguards against using other weapons 
 * Mario Kart round (`nobel_kart`)
   * A knife-only race to the other team's spawn, with a 3 minute round: each player who gets
