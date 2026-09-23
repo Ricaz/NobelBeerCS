@@ -161,11 +161,8 @@ new bool:g_awaitingBalance
 new bool:g_awaitingStats
 new bool:g_warnedNoStats
 
-// Scoreboard sips: a ready-made SVC_PINGS message showing each player's sips as their ping
-new g_pingMessage[128]
-new g_pingMessageLength
-new g_pingBits
-new g_pingBitCount
+// Scoreboard sips are shown in the HP column (the HealthInfo message)
+new g_msgHealthInfo
 new g_roundStartMoney[MAX_PLAYERS + 1]
 new g_lastWeapon[MAX_PLAYERS + 1]
 new g_lastTeam[MAX_PLAYERS + 1][16]
@@ -209,7 +206,10 @@ public plugin_init()
     register_logevent("on_hostage_touched", 3, "2=Touched_A_Hostage")
 
     RegisterHam(Ham_Spawn, "player", "on_player_spawn", 1)
-    register_forward(FM_UpdateClientData, "on_update_client_data")
+    // The newer CS 1.6 scoreboard's HP column; only sent by updated game servers
+    g_msgHealthInfo = get_user_msgid("HealthInfo")
+    if (g_msgHealthInfo)
+        register_message(g_msgHealthInfo, "on_health_info")
     RegisterHam(Ham_CS_Player_ResetMaxSpeed, "player", "on_reset_maxspeed", 1)
     RegisterHam(Ham_Weapon_WeaponIdle, "weapon_flashbang", "on_flashbang_idle")
     RegisterHam(Ham_TraceAttack, "hostage_entity", "on_hostage_hurt")
@@ -689,6 +689,8 @@ public on_round_start()
         return
 
     send_event("roundstart")
+    // Everyone drinks a sip at round start
+    refresh_player_stats_soon()
     g_bombDefused = false
     g_bombExploded = false
     g_timeElapsed = false
@@ -739,7 +741,7 @@ public on_round_end()
         request_player_stats()
 }
 
-// Sips change with every kill. Several deaths close together share one request.
+// Sips change with every kill and round. Several deaths close together share one request.
 refresh_player_stats_soon()
 {
     if (g_setting[SET_SIPS] && !task_exists(TASK_STATS_REFRESH))
@@ -1492,67 +1494,43 @@ apply_player_stats(JSON:reply)
     }
     json_free(list)
 
-    build_ping_message()
+    send_sips_to_scoreboards()
 }
 
 // ----------------------------------------------------------------------------
-// Scoreboard sips: each player's sips are shown in the scoreboard's latency
-// column. The message is built once per stats update and only sent to
-// players while they hold the scoreboard key.
+// Scoreboard sips: the scoreboard's HP column shows each player's sips instead.
+// The game sends HealthInfo per viewer (with -1 to hide enemies); every one is
+// rewritten, and new sips are pushed when the web app sends them.
 // ----------------------------------------------------------------------------
 
-// SVC_PINGS is a bit stream: per player [1][slot:5][ping:12][loss:7], then [0]
-build_ping_message()
+public on_health_info(msgid, dest, receiver)
 {
-    g_pingMessageLength = 0
-    g_pingBits = 0
-    g_pingBitCount = 0
+    if (!g_enabled || !g_setting[SET_SIPS])
+        return PLUGIN_CONTINUE
 
-    new players
-    for (new id = 1; id <= MAX_PLAYERS; id++) {
-        if (!g_hasStats[id] || !is_user_connected(id))
-            continue
-        write_ping_bits(1, 1)
-        write_ping_bits(id - 1, 5)
-        write_ping_bits(min(g_statSips[id], 4095), 12)
-        write_ping_bits(0, 7)
-        players++
-    }
+    new player = get_msg_arg_int(1)
+    if (1 <= player <= MAX_PLAYERS && g_hasStats[player])
+        set_msg_arg_int(2, ARG_LONG, g_statSips[player])
+    return PLUGIN_CONTINUE
+}
 
-    if (!players) {
-        g_pingMessageLength = 0
+send_sips_to_scoreboards()
+{
+    if (!g_msgHealthInfo || !g_enabled || !g_setting[SET_SIPS])
         return
+
+    new viewers[MAX_PLAYERS], num
+    get_players(viewers, num, "ch")
+    for (new i; i < num; i++) {
+        for (new player = 1; player <= MAX_PLAYERS; player++) {
+            if (!g_hasStats[player] || !is_user_connected(player))
+                continue
+            message_begin(MSG_ONE, g_msgHealthInfo, _, viewers[i])
+            write_byte(player)
+            write_long(g_statSips[player])
+            message_end()
+        }
     }
-
-    write_ping_bits(0, 1)
-    if (g_pingBitCount)
-        g_pingMessage[g_pingMessageLength++] = g_pingBits & 0xFF
-}
-
-write_ping_bits(value, count)
-{
-    g_pingBits |= (value & ((1 << count) - 1)) << g_pingBitCount
-    g_pingBitCount += count
-    while (g_pingBitCount >= 8) {
-        g_pingMessage[g_pingMessageLength++] = g_pingBits & 0xFF
-        g_pingBits >>>= 8
-        g_pingBitCount -= 8
-    }
-}
-
-// Runs for every client on every update, so it returns as early as possible
-public on_update_client_data(id)
-{
-    if (!g_pingMessageLength || !g_enabled || !g_setting[SET_SIPS])
-        return FMRES_IGNORED
-    if (!(pev(id, pev_button) & IN_SCORE) && !(pev(id, pev_oldbuttons) & IN_SCORE))
-        return FMRES_IGNORED
-
-    message_begin(MSG_ONE_UNRELIABLE, SVC_PINGS, _, id)
-    for (new i; i < g_pingMessageLength; i++)
-        write_byte(g_pingMessage[i])
-    message_end()
-    return FMRES_IGNORED
 }
 
 apply_balance(JSON:response)
