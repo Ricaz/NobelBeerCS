@@ -451,10 +451,16 @@ export default {
         this.soundBlocked = true
     },
 
-    // Tries to play a short silent sound (not muted: muted media is always allowed)
+    // Whether the browser lets the page play sound yet. Firefox can tell directly;
+    // elsewhere, try a short silent sound at normal volume (muted or zero-volume media
+    // counts as inaudible and is allowed even when sound isn't)
     checkSound: function () {
+      if (navigator.getAutoplayPolicy) {
+        this.soundBlocked = navigator.getAutoplayPolicy('mediaelement') !== 'allowed'
+        return
+      }
+
       const audio = new Audio(silentWav())
-      audio.volume = 0
       audio.play()
         .then(() => { this.soundBlocked = false; audio.pause() })
         .catch(this.onPlayError)
