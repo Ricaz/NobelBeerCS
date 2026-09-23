@@ -6,6 +6,8 @@ const emit = defineEmits([ 'done' ])
 
 const DURATION = 4500 // ms, matches the scroll animation below
 const WORDS = [ 'LIVE', 'LIVE', 'LIVE' ]
+// Fixed colors per letter: animating the color repaints the huge letters and makes the wave stutter
+const COLORS = [ '#00abff', '#ea403e', 'rgb(255 200 0)' ]
 
 let timer
 onMounted(() => { timer = setTimeout(() => emit('done'), DURATION) })
@@ -16,7 +18,8 @@ onUnmounted(() => clearTimeout(timer))
   <div class="live-banner" role="status" aria-label="The game is live">
     <div class="track">
       <span v-for="(word, w) in WORDS" :key="w" class="word">
-        <span v-for="(letter, i) in word" :key="i" class="letter" :style="{ animationDelay: `${-(w * 4 + i) * 0.1}s` }">{{ letter }}</span>
+        <span v-for="(letter, i) in word" :key="i" class="letter"
+          :style="{ animationDelay: `${-(w * 4 + i) * 0.1}s`, color: COLORS[(w * 4 + i) % COLORS.length] }">{{ letter }}</span>
       </span>
     </div>
   </div>
@@ -54,9 +57,9 @@ onUnmounted(() => clearTimeout(timer))
   paint-order: stroke fill;
   /* A sharp shadow: a blurred glow on letters this big is slow to redraw */
   text-shadow: 0 .06em 0 rgb(0 0 0 / 60%);
-  /* A continuous wave, each letter a little behind the previous one. The colors
-     jump instead of blending: blending repaints the huge letters on every frame. */
-  animation: wave 1.2s ease-in-out infinite, colors 1.2s steps(1) infinite;
+  /* A continuous wave, each letter a little behind the previous one. Only transforms
+     are animated, so the GPU moves the letters without redrawing them. */
+  animation: wave 1.2s ease-in-out infinite;
   will-change: transform;
 }
 
@@ -68,12 +71,6 @@ onUnmounted(() => clearTimeout(timer))
 @keyframes wave {
   0%, 100% { transform: translateY(14%) rotate(-6deg); }
   50% { transform: translateY(-14%) rotate(6deg); }
-}
-
-@keyframes colors {
-  0% { color: #00abff; }
-  33% { color: #ea403e; }
-  66% { color: rgb(255 200 0); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -89,7 +86,6 @@ onUnmounted(() => clearTimeout(timer))
   .letter {
     font-size: 18vh;
     animation: none;
-    color: rgb(255 200 0);
   }
 }
 </style>
