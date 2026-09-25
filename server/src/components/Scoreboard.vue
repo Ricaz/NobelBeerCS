@@ -1,7 +1,8 @@
 <script setup>
 // One scoreboard for everything: the live (or final) game and the stats tables
-// (last session, this LAN, all time). Players are listed in the given order.
-import { computed } from 'vue'
+// (last session, this LAN, all time). Players are listed in the given order,
+// until a header is clicked to sort by that column.
+import { computed, ref } from 'vue'
 import BeerBar from './BeerBar.vue'
 import { kdRatio, beers } from './playerStats.js'
 
@@ -25,10 +26,11 @@ const props = defineProps({
 })
 
 // Number columns: header, width (em), text (or a pair of numbers, the first in
-// bold), and whether it fades as a zero
-const count = (label, field, width) => ({ label, width, text: (p) => p[field], zero: (p) => !p[field] })
-const pair = (label, a, b, width) => ({ label, width, pair: (p) => [ p[a], p[b] ], zero: (p) => !p[a] && !p[b] })
-const RATIO = { label: 'K/D', width: 3, text: (p) => kdRatio(p).toFixed(2), zero: () => false, class: 'kd' }
+// bold), whether it fades as a zero, and what it sorts by (a pair: the first
+// number, then the second the other way, so 10-2 comes before 10-5)
+const count = (label, field, width) => ({ label, width, text: (p) => p[field], zero: (p) => !p[field], sort: (p) => [ p[field] ] })
+const pair = (label, a, b, width) => ({ label, width, pair: (p) => [ p[a], p[b] ], zero: (p) => !p[a] && !p[b], sort: (p) => [ p[a], -p[b] ] })
+const RATIO = { label: 'K/D', width: 3, text: (p) => kdRatio(p).toFixed(2), zero: () => false, class: 'kd', sort: (p) => [ kdRatio(p) ] }
 const TK_SUICIDE = [ count('TK', 'teamkills', 2.8), count('Suicide', 'suicides', 3.8) ]
 
 const columns = computed(() => props.combined
@@ -39,6 +41,50 @@ const columnWidths = computed(() => columns.value.map((c) => `${c.width}em`).joi
 
 // Beers over many games run into the thousands: a bar relative to the leader
 const maxSips = computed(() => Math.max(1, ...props.players.map((p) => p.sips)))
+
+// Sorting: the clicked column's key, and whether it's descending. No key is the
+// given order. Numbers start with the highest, names with A.
+const NAME_SORT = (p) => [ p.name.toLowerCase() ]
+const BEER_SORT = (p) => [ p.sips ]
+const sortKey = ref(null)
+const sortDesc = ref(true)
+
+function sortBy(key, desc = true) {
+  if (sortKey.value === key) {
+    sortDesc.value = !sortDesc.value
+  } else {
+    sortKey.value = key
+    sortDesc.value = desc
+  }
+}
+
+function sortedClass(key) {
+  return sortKey.value === key ? (sortDesc.value ? 'sorted desc' : 'sorted asc') : null
+}
+
+const extraSort = computed(() => props.extra && ((p) => [ p[props.extra.field] ]))
+const sortFn = computed(() => {
+  if (sortKey.value === 'name') return NAME_SORT
+  if (sortKey.value === 'beers') return BEER_SORT
+  if (sortKey.value === 'extra') return extraSort.value
+  return columns.value.find((c) => c.label === sortKey.value)?.sort
+})
+
+// Ties keep the given order (sort is stable)
+const rows = computed(() => {
+  const key = sortFn.value
+  if (!key)
+    return props.players
+  const dir = sortDesc.value ? -1 : 1
+  return [ ...props.players ].sort((a, b) => {
+    const ka = key(a), kb = key(b)
+    for (let i = 0; i < ka.length; i++) {
+      if (ka[i] < kb[i]) return -dir
+      if (ka[i] > kb[i]) return dir
+    }
+    return 0
+  })
+})
 </script>
 
 <template>
@@ -46,14 +92,14 @@ const maxSips = computed(() => Math.max(1, ...props.players.map((p) => p.sips)))
     <h1 v-if="title">{{ title }}</h1>
 
     <div class="row head">
-      <span class="rank">#</span>
-      <span>{{ nameLabel }}</span>
-      <span v-for="c in columns" :key="c.label" class="num">{{ c.label }}</span>
-      <span class="num">{{ live ? 'ØLs' : 'Øl' }}</span>
-      <span v-if="extra" class="num">{{ extra.label }}</span>
+      <button class="rank" title="Default order" @click="sortKey = null">#</button>
+      <button :class="sortedClass('name')" @click="sortBy('name', false)">{{ nameLabel }}</button>
+      <button v-for="c in columns" :key="c.label" class="num" :class="sortedClass(c.label)" @click="sortBy(c.label)">{{ c.label }}</button>
+      <button class="num" :class="sortedClass('beers')" @click="sortBy('beers')">{{ live ? 'ØLs' : 'Øl' }}</button>
+      <button v-if="extra" class="num" :class="sortedClass('extra')" @click="sortBy('extra')">{{ extra.label }}</button>
     </div>
 
-    <div v-for="(p, i) in players" :key="p.id" class="row" :class="[ p.team, { dead: live && dead?.includes(p.id) } ]">
+    <div v-for="(p, i) in rows" :key="p.id" class="row" :class="[ p.team, { dead: live && dead?.includes(p.id) } ]">
       <span v-if="live && flashes?.[p.id]" :key="flashes[p.id]" class="flash"></span>
       <span class="rank">{{ i + 1 }}</span>
       <span class="name" :title="p.name"><span class="text">{{ p.name }}</span></span>
@@ -152,6 +198,55 @@ h1 {
   white-space: nowrap;
   color: rgb(255 255 255 / 60%);
 }
+
+/* Headers are buttons that sort by their column */
+.row.head button {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  /* After font, which resets it (see .row.head > *) */
+  font-size: .8em;
+  text-align: start;
+  position: relative;
+  cursor: pointer;
+}
+
+/* As wide as the label, so the arrow sits right before it (Bootstrap's .row > *
+   would make it full width) */
+.row.head button.num {
+  width: auto;
+  justify-self: end;
+  text-align: right;
+}
+
+.row.head button:hover,
+.row.head button.sorted {
+  color: white;
+}
+
+.row.head button:focus-visible {
+  outline: 1px solid rgb(255 255 255 / 60%);
+  outline-offset: .15em;
+}
+
+/* The sort direction: an arrow in the gap before a right-aligned header, after
+   the name header */
+.row.head .sorted::after {
+  position: absolute;
+  right: calc(100% + .15em);
+  font-size: .7em;
+  line-height: 1.8;
+}
+
+.row.head :not(.num).sorted::after {
+  position: static;
+  margin-left: .3em;
+}
+
+.row.head .sorted.desc::after { content: '▼'; }
+.row.head .sorted.asc::after { content: '▲'; }
 
 .rank {
   color: rgb(255 255 255 / 40%);
