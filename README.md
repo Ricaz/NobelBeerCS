@@ -66,6 +66,10 @@ All the commands are toggleable.
   * In the next round, everyone gets an M249 with infinite ammo and a continuous supply of HE grenades
   * You cannot stop firing the gun
   * No bomb and no buying, and a song plays on repeat throughout the round
+  * Rage: every kill heals 25 HP and makes the M249 fire twice as fast for 3 seconds
+  * John Rambo: the last one alive on a team gets 500 HP and a golden glow
+  * The red headband: one random player per team wears it, glowing red. Killing the wearer
+    pays $1000 and takes the headband over.
   * Kinda glitchy, especially if people try to circumvent the safeguards against using other weapons 
 * Mario Kart round (`nobel_kart`)
   * A knife-only race to the other team's spawn, with a 3 minute round: each player who gets
@@ -98,6 +102,9 @@ All the commands are toggleable.
   * Each round has a 20% chance that a random T and CT swap places (at least 30 seconds in),
     with a short flash and a sound
   * `nobel_teleswapnow [player] [player]` swaps two players right away (a random T and CT without names)
+* The jungle (`nobel_jungle`, off by default)
+  * The map goes dark, and everyone has a flashlight (F). Takes effect right away and lasts
+    until it's turned off or the map changes
 * Autobalance (`nobel_balance <games>`, runs automatically with `nobel_start`)
   * Rates each player by kills/deaths over their own last `<games>` games (50 by default)
   * Picks a random split among the ones where the teams' average ratings are within 3%,

@@ -5,6 +5,8 @@ const COOLDOWN_EVENTS = [ 'grenade', 'mk_hit', 'mk_fireflower' ]
 // are summed up on one overlay
 const SHAME_WINDOW = 3000
 const SHAME_HIDE_AFTER = 8000
+// How long "JOHN RAMBO" stays on screen
+const RAMBO_OVERLAY_TIME = 5000
 // Mario Kart's knife kills (back to the start) go in the killfeed too
 const KILL_EVENTS = [ 'kill', 'headshot', 'knife', 'grenade', 'tk', 'suicide', 'kniferound', 'bong', 'mk_knifed' ]
 // Played on repeat: the Mario Kart race music and the rambo round's song
@@ -54,6 +56,8 @@ export default {
       shame: [],
       shameAt: 0,
       shameHideTimer: null,
+      // Hides the rambo round's John Rambo overlay
+      ramboHideTimer: null,
       // End-of-map awards while they are shown
       awards: null,
       awardsTimer: null,
@@ -210,6 +214,16 @@ export default {
           this.overlay.summary = false
           this.overlay.wrap = true
           this.overlay.show = true
+          break
+        }
+        // The last one alive on a team in the rambo round
+        case "rambo_alone": {
+          const p = this.scores.find((p) => p.id == data.args?.[0])
+          this.overlay.lines = [
+            [ { text: 'JOHN RAMBO' } ],
+            [ { text: p?.name ?? '???', team: p?.team, small: true } ],
+          ]
+          this.showRamboOverlay()
           break
         }
         case "bombexploded":
@@ -553,6 +567,18 @@ export default {
       }, 3000)
     },
 
+    // Shown for a while, or until the next round clears the screen
+    showRamboOverlay: function () {
+      this.overlay.summary = false
+      this.overlay.wrap = false
+      this.overlay.show = true
+      clearTimeout(this.ramboHideTimer)
+      this.ramboHideTimer = setTimeout(() => {
+        if (!this.paused && !this.shame.length)
+          this.overlay.show = false
+      }, RAMBO_OVERLAY_TIME)
+    },
+
     stopLoopingSound: function () {
       if (!this.loopingSound)
         return
@@ -565,6 +591,7 @@ export default {
     clearScreen: function (sounds = true, keepLoop = false) {
       this.paused = false
       this.shame = []
+      clearTimeout(this.ramboHideTimer)
       if (sounds)
         this.stopSound(keepLoop)
       else

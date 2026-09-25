@@ -29,6 +29,20 @@
 #define ROUND_ENDING_WARNING 19.0
 #define SOCKET_RETRY_DELAY 10.0
 
+// Rambo round
+#define RAMBO_HEALTH 200
+// Rage: every kill heals and speeds up the M249 for a while
+#define RAMBO_RAGE_HEAL 25
+#define RAMBO_RAGE_TIME 3.0
+#define RAMBO_RAGE_FIRE_DELAY 0.5
+// The last one alive on a team (of at least 2) becomes John Rambo
+#define RAMBO_LAST_MAN_HEALTH 500
+// A red headband on one player per team: killing its wearer pays and takes it over
+#define RAMBO_HEADBAND_BOUNTY 1000
+
+// The jungle: dark, with flashlights
+#define JUNGLE_LIGHTS "c"
+
 // Teleswap: chance per round that a random T and CT swap places, not before
 // TELESWAP_EARLIEST seconds into the round
 #define TELESWAP_CHANCE 20
@@ -150,7 +164,8 @@ enum Setting
     SET_FLASHPROTECTION,
     SET_NOOBBUFF,
     SET_SIPS,
-    SET_TELESWAP
+    SET_TELESWAP,
+    SET_JUNGLE
 }
 new const SETTING_CMD[Setting][] = {
     "nobel_pause",
@@ -161,7 +176,8 @@ new const SETTING_CMD[Setting][] = {
     "nobel_flashprotection",
     "nobel_noobbuff",
     "nobel_sips",
-    "nobel_teleswap"
+    "nobel_teleswap",
+    "nobel_jungle"
 }
 new const SETTING_NAME[Setting][] = {
     "pausing",
@@ -172,10 +188,11 @@ new const SETTING_NAME[Setting][] = {
     "flashprotection",
     "noobbuff",
     "scoreboardsips",
-    "teleswap"
+    "teleswap",
+    "jungle"
 }
-new const bool:SETTING_ANNOUNCE[Setting] = { true, true, true, false, true, true, true, true, true }
-new bool:g_setting[Setting] = { false, false, true, false, false, false, true, true, false }
+new const bool:SETTING_ANNOUNCE[Setting] = { true, true, true, false, true, true, true, true, true, true }
+new bool:g_setting[Setting] = { false, false, true, false, false, false, true, true, false, false }
 
 // Special rounds. Only one can be active or queued at a time.
 enum RoundMode
@@ -261,6 +278,12 @@ new bool:g_boostOnUnfreeze[MAX_PLAYERS + 1]
 // Rambo: we sent this player +attack; and when we may send it again
 new bool:g_forcedAttack[MAX_PLAYERS + 1]
 new Float:g_nextForcedAttack[MAX_PLAYERS + 1]
+new Float:g_rageUntil[MAX_PLAYERS + 1]
+new bool:g_lastMan[MAX_PLAYERS + 1]
+new bool:g_teamHasLastMan[CsTeams]
+// Headbands worn by each player (killing a wearer takes them all)
+new g_headbands[MAX_PLAYERS + 1]
+new g_oldFlashlight = -1
 new g_roundsWithoutKill[MAX_PLAYERS + 1]
 new bool:g_killedThisRound[MAX_PLAYERS + 1]
 // This game's sips/kills/deaths per player, from the web app
@@ -416,6 +439,8 @@ public plugin_init()
             RegisterHam(Ham_Weapon_PrimaryAttack, weaponName, "on_rambo_attack")
     }
 
+    RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_m249", "on_m249_attack_post", 1)
+
     for (new Setting:s; s < Setting; s++)
         register_concmd(SETTING_CMD[s], "cmd_toggle_setting", ACCESS_ADMIN, "[0|1] - Toggle a Nobel setting.")
     for (new RoundMode:m = MODE_KNIFE; m < RoundMode; m++)
@@ -480,6 +505,7 @@ public plugin_init()
 public plugin_end()
 {
     restore_kart_cvars()
+    end_jungle()
     save_spots()
     ArrayDestroy(g_spots)
     if (g_vault != INVALID_HANDLE)
@@ -680,6 +706,10 @@ public client_disconnected(id)
     g_item[id] = ITEM_NONE
     remove_task(TASK_RAMBO + id)
     remove_task(TASK_ZOOMSLAP + id)
+    g_rageUntil[id] = 0.0
+    g_lastMan[id] = false
+    if (g_headbands[id])
+        pass_headbands(id, 0)
 
     if (is_counted(id)) {
         send_player_cmd("playerleft", id)
@@ -721,7 +751,7 @@ public on_player_spawn(id)
     }
 
     if (g_mode == MODE_RAMBO) {
-        set_user_health(id, 200)
+        set_user_health(id, RAMBO_HEALTH)
         give_item(id, "item_assaultsuit")
         give_rambo_weapons(id)
         set_task(5.0, "task_rambo", TASK_RAMBO + id, _, _, "b")
@@ -873,6 +903,7 @@ start_new_round()
     client_cmd(0, "-attack")
     reset_kart()
     remove_task(TASK_RAMBO_C4)
+    reset_rambo()
 
     if (g_endModeAfterRound) {
         end_round_mode()
@@ -933,6 +964,9 @@ public on_round_start()
 
     if (g_mode == MODE_KART)
         start_race()
+
+    if (g_mode == MODE_RAMBO)
+        hand_out_headbands()
 
     if (g_setting[SET_FLASH]) {
         g_flashThrown = false
@@ -1229,6 +1263,7 @@ end_round_mode()
         for (new id = 1; id <= MAX_PLAYERS; id++)
             remove_task(TASK_RAMBO + id)
         client_cmd(0, "-attack")
+        reset_rambo()
     }
 
     if (g_mode == MODE_KART) {
@@ -1414,6 +1449,187 @@ public task_rambo_slap(taskid)
     new id = taskid - TASK_RAMBO_SLAP
     if (g_mode == MODE_RAMBO && is_user_alive(id))
         user_slap(id, random_num(40, 60))
+}
+
+reset_rambo()
+{
+    for (new id = 1; id <= MAX_PLAYERS; id++) {
+        new bool:glowing = g_lastMan[id] || g_headbands[id] > 0
+        g_rageUntil[id] = 0.0
+        g_lastMan[id] = false
+        g_headbands[id] = 0
+        if (glowing && is_user_connected(id))
+            set_user_rendering(id)
+    }
+    g_teamHasLastMan[CS_TEAM_T] = false
+    g_teamHasLastMan[CS_TEAM_CT] = false
+}
+
+// John Rambo glows gold, headband wearers red
+update_rambo_glow(id)
+{
+    if (!is_user_alive(id))
+        return
+
+    if (g_lastMan[id])
+        set_user_rendering(id, kRenderFxGlowShell, 255, 190, 0, kRenderNormal, 25)
+    else if (g_headbands[id])
+        set_user_rendering(id, kRenderFxGlowShell, 255, 0, 0, kRenderNormal, 20)
+    else
+        set_user_rendering(id)
+}
+
+rambo_death(killer, victim)
+{
+    new bool:enemyKill = 1 <= killer <= MAX_PLAYERS && killer != victim
+        && cs_get_user_team(killer) != cs_get_user_team(victim)
+
+    if (enemyKill && is_user_alive(killer))
+        rambo_rage(killer)
+
+    if (g_headbands[victim])
+        pass_headbands(victim, 1 <= killer <= MAX_PLAYERS && killer != victim ? killer : 0, enemyKill)
+
+    g_lastMan[victim] = false
+    check_rambo_last_man()
+}
+
+// A kill heals, and the M249 fires faster for a while (see on_m249_attack_post)
+rambo_rage(id)
+{
+    new maxHealth = g_lastMan[id] ? RAMBO_LAST_MAN_HEALTH : RAMBO_HEALTH
+    set_user_health(id, min(get_user_health(id) + RAMBO_RAGE_HEAL, max(maxHealth, get_user_health(id))))
+    g_rageUntil[id] = get_gametime() + RAMBO_RAGE_TIME
+    screen_fade(id, 0.6, 255, 0, 0, 110)
+}
+
+public on_m249_attack_post(weapon)
+{
+    if (g_mode != MODE_RAMBO)
+        return
+
+    new owner = pev(weapon, pev_owner)
+    if (!(1 <= owner <= MAX_PLAYERS) || get_gametime() >= g_rageUntil[owner])
+        return
+
+    // The delay until the next shot counts down from the shot
+    new Float:delay = get_ent_data_float(weapon, "CBasePlayerWeapon", "m_flNextPrimaryAttack")
+    set_ent_data_float(weapon, "CBasePlayerWeapon", "m_flNextPrimaryAttack", delay * RAMBO_RAGE_FIRE_DELAY)
+}
+
+// The last one alive on a team of at least two becomes John Rambo
+check_rambo_last_man()
+{
+    new const CsTeams:teams[] = { CS_TEAM_T, CS_TEAM_CT }
+    new const teamNames[][] = { "TERRORIST", "CT" }
+    for (new t; t < sizeof(teams); t++) {
+        new CsTeams:team = teams[t]
+        if (g_teamHasLastMan[team])
+            continue
+
+        // Bots count too: they fight like anyone else
+        new players[MAX_PLAYERS], total, alive
+        get_players(players, total, "eh", teamNames[t])
+        get_players(players, alive, "aeh", teamNames[t])
+        if (total < 2 || alive != 1)
+            continue
+
+        new id = players[0]
+        g_teamHasLastMan[team] = true
+        g_lastMan[id] = true
+        set_user_health(id, RAMBO_LAST_MAN_HEALTH)
+        update_rambo_glow(id)
+        screen_fade(id, 1.0, 255, 190, 0, 140)
+
+        new name[MAX_NAME_LENGTH], playerId[MAX_AUTHID_LENGTH]
+        get_user_name(id, name, charsmax(name))
+        get_player_id(id, playerId, charsmax(playerId))
+        set_dhudmessage(255, 190, 0, -1.0, 0.25, 0, 0.0, 4.0, 0.1, 0.5)
+        show_dhudmessage(0, "%s IS JOHN RAMBO", name)
+        send_event("rambo_alone", playerId)
+    }
+}
+
+// One red headband per team, on a random player
+hand_out_headbands()
+{
+    new const teamNames[][] = { "TERRORIST", "CT" }
+    for (new t; t < sizeof(teamNames); t++) {
+        new players[MAX_PLAYERS], num
+        get_players(players, num, "aeh", teamNames[t])
+        if (!num)
+            continue
+
+        new id = players[random(num)]
+        g_headbands[id]++
+        update_rambo_glow(id)
+
+        new name[MAX_NAME_LENGTH]
+        get_user_name(id, name, charsmax(name))
+        client_print(0, print_chat, "%s wears the red headband: $%d to whoever kills them!", name, RAMBO_HEADBAND_BOUNTY)
+        client_print(id, print_center, "You wear the red headband!^n$%d to whoever kills you", RAMBO_HEADBAND_BOUNTY)
+    }
+}
+
+// A dead (or leaving) wearer's headbands go to their killer, who gets the bounty for
+// an enemy's. Without a killer, a random teammate takes them over.
+pass_headbands(from, to, bool:bounty = false)
+{
+    new count = g_headbands[from]
+    g_headbands[from] = 0
+    update_rambo_glow(from)
+
+    if (!to || !is_user_alive(to)) {
+        new players[MAX_PLAYERS], num
+        if (cs_get_user_team(from) == CS_TEAM_T)
+            get_players(players, num, "aeh", "TERRORIST")
+        else
+            get_players(players, num, "aeh", "CT")
+        for (new i; i < num; i++) {
+            if (players[i] == from) {
+                players[i--] = players[--num]
+            }
+        }
+        if (!num)
+            return
+        to = players[random(num)]
+        bounty = false
+    }
+
+    g_headbands[to] += count
+    update_rambo_glow(to)
+
+    new name[MAX_NAME_LENGTH], fromName[MAX_NAME_LENGTH]
+    get_user_name(to, name, charsmax(name))
+    get_user_name(from, fromName, charsmax(fromName))
+    if (bounty) {
+        add_money(to, RAMBO_HEADBAND_BOUNTY * count)
+        client_print(0, print_chat, "%s took the red headband off %s: $%d!", name, fromName, RAMBO_HEADBAND_BOUNTY * count)
+    } else {
+        client_print(0, print_chat, "%s took over the red headband from %s", name, fromName)
+    }
+    client_print(to, print_center, "You wear the red headband!^n$%d to whoever kills you", RAMBO_HEADBAND_BOUNTY * g_headbands[to])
+}
+
+// ----------------------------------------------------------------------------
+// The jungle (nobel_jungle): the map goes dark and everyone gets a flashlight
+start_jungle()
+{
+    set_lights(JUNGLE_LIGHTS)
+    if (g_oldFlashlight == -1) {
+        g_oldFlashlight = get_cvar_num("mp_flashlight")
+        set_cvar_num("mp_flashlight", 1)
+    }
+}
+
+end_jungle()
+{
+    if (g_oldFlashlight == -1)
+        return
+
+    set_lights("#OFF")
+    set_cvar_num("mp_flashlight", g_oldFlashlight)
+    g_oldFlashlight = -1
 }
 
 // ----------------------------------------------------------------------------
@@ -3096,6 +3312,9 @@ public on_death()
     if (g_mode == MODE_KART)
         return
 
+    if (g_mode == MODE_RAMBO)
+        rambo_death(killer, victim)
+
     new bool:suicide = killer == victim || !killer
     new bool:knifed = bool:equal(weapon, "knife")
     new bool:grenade = bool:equal(weapon, "grenade")
@@ -3187,7 +3406,8 @@ bool:is_worst_player(id)
 
 check_last_alive()
 {
-    if (g_aloneAnnounced)
+    // The rambo round has its own last man (see check_rambo_last_man)
+    if (g_aloneAnnounced || g_mode == MODE_RAMBO)
         return
 
     new players[MAX_PLAYERS], total, aliveT, aliveCT
@@ -3826,6 +4046,13 @@ public cmd_toggle_setting(id, level, cid)
 
         g_setting[s] = read_argc() > 1 ? read_argv_int(1) != 0 : !g_setting[s]
         log_admin(id, "turned %s %s", SETTING_NAME[s], g_setting[s] ? "on" : "off")
+
+        if (s == SET_JUNGLE) {
+            if (g_setting[s])
+                start_jungle()
+            else
+                end_jungle()
+        }
 
         if (SETTING_ANNOUNCE[s])
             client_print(0, print_chat, "Nobel Beer CS %s %s", SETTING_NAME[s], g_setting[s] ? "enabled" : "disabled")
