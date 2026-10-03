@@ -68,7 +68,7 @@ All the commands are toggleable.
   * No bomb and no buying, and a song plays on repeat throughout the round
   * Rage: every kill heals 25 HP and makes the M249 fire twice as fast for 3 seconds
   * John Rambo: the last one alive on a team gets 500 HP and a golden glow
-  * The red headband: one random player per team wears it, glowing red. Killing the wearer
+  * The red headband: one random player per team wears it, glowing in their team's color. Killing the wearer
     pays $1000 and takes the headband over.
   * Kinda glitchy, especially if people try to circumvent the safeguards against using other weapons 
 * Mario Kart round (`nobel_kart`)
@@ -102,7 +102,7 @@ All the commands are toggleable.
   * Each round has a 20% chance that a random T and CT swap places (at least 30 seconds in),
     with a short flash and a sound
   * `nobel_teleswapnow [player] [player]` swaps two players right away (a random T and CT without names)
-* Flash (`nobel_flash`, off by default)
+* Flash (`nobel_flash`, on by default)
   * A third of normal rounds (at least 10 seconds in), Queen's Flash fades in on the big screen.
     On "FLASH!" everyone alive throws a flashbang, without switching weapons, and they all go
     off on the "aaah"

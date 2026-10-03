@@ -212,7 +212,7 @@ new const SETTING_NAME[Setting][] = {
     "jungle"
 }
 new const bool:SETTING_ANNOUNCE[Setting] = { true, true, true, true, true, true, true, true, true, true }
-new bool:g_setting[Setting] = { false, false, true, false, false, false, true, true, false, false }
+new bool:g_setting[Setting] = { false, false, true, true, false, false, true, true, false, false }
 
 // Special rounds. Only one can be active or queued at a time.
 enum RoundMode
@@ -1659,8 +1659,8 @@ reset_rambo()
     g_teamHasLastMan[CS_TEAM_CT] = false
 }
 
-// John Rambo glows gold, headband wearers red (only in the rambo round), the
-// frozen faintly blue
+// John Rambo glows gold, headband wearers in their team's color (only in the
+// rambo round), the frozen faintly blue
 update_rambo_glow(id)
 {
     if (!is_user_alive(id))
@@ -1668,6 +1668,8 @@ update_rambo_glow(id)
 
     if (g_lastMan[id])
         set_user_rendering(id, kRenderFxGlowShell, 255, 190, 0, kRenderNormal, 25)
+    else if (g_headbands[id] && cs_get_user_team(id) == CS_TEAM_CT)
+        set_user_rendering(id, kRenderFxGlowShell, 0, 100, 255, kRenderNormal, 20)
     else if (g_headbands[id])
         set_user_rendering(id, kRenderFxGlowShell, 255, 0, 0, kRenderNormal, 20)
     else
