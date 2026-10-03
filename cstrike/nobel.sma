@@ -55,12 +55,15 @@
 #define TELESWAP_CHANCE 20
 #define TELESWAP_EARLIEST 10.0
 
-// Flash: chance per normal round that Queen's Flash fades in on the big screen, not
-// before FLASH_EARLIEST seconds into the round. On "FLASH!" everyone alive throws a
+// Flash: chance per normal round that Queen's Flash fades in on the big screen,
+// between FLASH_EARLIEST and FLASH_LATEST seconds into the round, and not in the
+// map's last FLASH_MAP_END_MARGIN seconds. On "FLASH!" everyone alive throws a
 // flashbang, which goes off on the "aaah" FLASH_SONG_SCREAM seconds into the song
 // (flash/*.mp3), after a flashbang's usual fuse.
 #define FLASH_CHANCE 33
 #define FLASH_EARLIEST 10.0
+#define FLASH_LATEST 60.0
+#define FLASH_MAP_END_MARGIN 30
 #define FLASH_SONG_SCREAM 12.7
 #define FLASH_FUSE 1.5
 // Marks our flashbangs (pev_iuser4), so the hooks leave real grenades alone
@@ -297,6 +300,8 @@ new bool:g_timeElapsed
 new bool:g_aloneAnnounced
 new bool:g_hostageTouched
 new bool:g_teamsSwitched
+// The map is over (intermission): no more game events, e.g. from a bomb still ticking
+new bool:g_mapEnded
 // Flash: whether it has happened (or was triggered) this round, and when its
 // flashbangs go off
 new bool:g_flashThisRound
@@ -1044,7 +1049,7 @@ public on_round_start()
         set_task(random_float(TELESWAP_EARLIEST, roundTime - 5.0), "task_teleswap", TASK_TELESWAP)
 
     // The flashbangs go off at least 5 seconds before the round timer runs out
-    new Float:flashLatest = roundTime - FLASH_SONG_SCREAM - 5.0
+    new Float:flashLatest = floatmin(FLASH_LATEST, roundTime - FLASH_SONG_SCREAM - 5.0)
     if (g_setting[SET_FLASH] && g_mode == MODE_NORMAL && random_num(1, 100) <= FLASH_CHANCE && flashLatest > FLASH_EARLIEST)
         set_task(random_float(FLASH_EARLIEST, flashLatest), "task_flash", TASK_FLASH)
 }
@@ -1133,8 +1138,14 @@ flash_fade(id)
 
 public task_flash()
 {
-    if (g_enabled && g_setting[SET_FLASH] && !g_paused && !g_flashThisRound)
+    if (g_enabled && g_setting[SET_FLASH] && !g_paused && !g_flashThisRound && !map_ending_soon(FLASH_MAP_END_MARGIN))
         start_flash()
+}
+
+// Whether the map's time limit (if any) runs out within this many seconds
+bool:map_ending_soon(seconds)
+{
+    return get_cvar_float("mp_timelimit") > 0.0 && get_timeleft() < seconds
 }
 
 bool:flash_in_progress()
@@ -1432,6 +1443,7 @@ public on_intermission()
     if (g_vault != INVALID_HANDLE)
         nvault_set(g_vault, VAULT_KEY_MAPEND, "1")
     send_event("mapend")
+    g_mapEnded = true
 }
 
 public task_mapend_pause_end()
@@ -4248,7 +4260,7 @@ send_players()
 
 send_event(const cmd[], const arg1[] = "", const arg2[] = "", const sound[] = "", const weapon[] = "", bool:headshot = false)
 {
-    if (g_enabled)
+    if (g_enabled && !g_mapEnded)
         send_event_always(cmd, arg1, arg2, sound, weapon, headshot)
 }
 

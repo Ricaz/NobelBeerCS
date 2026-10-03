@@ -189,7 +189,9 @@ export default {
           // Let the page render offscreen before sliding to it
           this.$nextTick(() => requestAnimationFrame(() => { this.mode = 'all' }))
           break
+        // Nothing from the last round (e.g. the bomb video) stays over the awards
         case "mapend":
+          this.clearScreen()
           this.playMedia('assets/media/default/wii/wiishop.mp3')
           break
         case "state":
