@@ -26,8 +26,11 @@
 #define FROZEN_SPEED 0.1
 #define FLASH_PROTECTION_TIME 8.0
 #define MAPEND_PAUSE_TIME 300.0
-// Frozen after a kill: a faint blue glow (shell thickness)
-#define FROZEN_GLOW 4
+// Frozen after a kill: faint ice on the floor where the player was frozen (a ring
+// with shards leaning in), redrawn this often (seconds)
+#define ICE_REFRESH 0.5
+#define ICE_SHARDS 8
+#define ICE_BRIGHTNESS 50
 
 // No server frame for this long (seconds): the engine is paused
 #define PAUSED_AFTER 0.25
@@ -164,7 +167,8 @@ enum (+= 100)
     TASK_KART_TIME_UP,
     TASK_KART_FINISHED,
     TASK_KART_BLUESHELL,
-    TASK_SPOTS
+    TASK_SPOTS,
+    TASK_ICE
 }
 
 enum ModState
@@ -309,7 +313,8 @@ new Float:g_flashBangAt
 new bool:g_flashProtectionActive
 
 new bool:g_frozen[MAX_PLAYERS + 1]
-new bool:g_frozenGlow[MAX_PLAYERS + 1]
+new bool:g_iced[MAX_PLAYERS + 1]
+new Float:g_iceSpot[MAX_PLAYERS + 1][3]
 new bool:g_announceUnfreeze[MAX_PLAYERS + 1]
 new bool:g_boostOnUnfreeze[MAX_PLAYERS + 1]
 // Rambo: we sent this player +attack; and when we may send it again
@@ -742,7 +747,7 @@ public client_disconnected(id)
 {
     g_frozen[id] = false
     remove_task(TASK_UNFREEZE + id)
-    stop_frozen_glow(id)
+    stop_ice(id)
     remove_task(TASK_KART_BLUESHELL + id)
     g_spinStart[id] = 0.0
     g_item[id] = ITEM_NONE
@@ -885,8 +890,8 @@ public on_reset_maxspeed(id)
         set_user_maxspeed(id, g_kartSpeed[id])
 }
 
-// glow: frozen to drink (not stunned in Mario Kart), glowing faintly blue
-freeze_player(id, Float:duration = FREEZE_TIME, bool:announce = true, bool:glow = true)
+// ice: frozen to drink (not stunned in Mario Kart), with ice at the feet
+freeze_player(id, Float:duration = FREEZE_TIME, bool:announce = true, bool:ice = true)
 {
     if (!is_user_alive(id))
         return
@@ -899,17 +904,15 @@ freeze_player(id, Float:duration = FREEZE_TIME, bool:announce = true, bool:glow 
     remove_task(TASK_UNFREEZE + id)
     set_task(duration, "task_unfreeze", TASK_UNFREEZE + id)
 
-    if (glow && !g_frozenGlow[id]) {
-        g_frozenGlow[id] = true
-        update_glow(id)
-    }
+    if (ice && !g_iced[id])
+        start_ice(id)
 }
 
 public task_unfreeze(taskid)
 {
     new id = taskid - TASK_UNFREEZE
     g_frozen[id] = false
-    stop_frozen_glow(id)
+    stop_ice(id)
 
     if (is_user_alive(id)) {
         ExecuteHamB(Ham_CS_Player_ResetMaxSpeed, id)
@@ -920,25 +923,81 @@ public task_unfreeze(taskid)
     }
 }
 
-stop_frozen_glow(id)
+// Frozen players can't walk, so the ice stays on the floor where they were frozen
+// (also when they jump)
+start_ice(id)
 {
-    if (!g_frozenGlow[id])
-        return
-    g_frozenGlow[id] = false
-    // The glow updates skip the dead, who would otherwise respawn glowing
-    if (is_user_alive(id))
-        update_glow(id)
-    else if (is_user_connected(id))
-        set_user_rendering(id)
+    new Float:origin[3], Float:below[3]
+    pev(id, pev_origin, origin)
+    copy_vector(origin, below)
+    below[2] -= 4096.0
+    trace_line(id, origin, below, g_iceSpot[id])
+    g_iceSpot[id][2] += 1.0
+
+    g_iced[id] = true
+    draw_ice(id)
+    set_task(ICE_REFRESH, "task_ice", TASK_ICE + id, _, _, "b")
 }
 
-// The glow a player should have: Mario Kart's or rambo's, or frozen blue
-update_glow(id)
+public task_ice(taskid)
 {
-    if (g_mode == MODE_KART)
-        update_kart_glow(id, get_gametime())
+    new id = taskid - TASK_ICE
+    if (g_frozen[id] && is_user_alive(id))
+        draw_ice(id)
     else
-        update_rambo_glow(id)
+        stop_ice(id)
+}
+
+// The beams fade out by themselves shortly after
+stop_ice(id)
+{
+    remove_task(TASK_ICE + id)
+    g_iced[id] = false
+}
+
+// The beams last a little longer than ICE_REFRESH, so the ice doesn't flicker
+draw_ice(id)
+{
+    new Float:base[ICE_SHARDS][3]
+    for (new i; i < ICE_SHARDS; i++) {
+        new Float:angle = 360.0 * i / ICE_SHARDS
+        base[i][0] = g_iceSpot[id][0] + 18.0 * floatcos(angle, degrees)
+        base[i][1] = g_iceSpot[id][1] + 18.0 * floatsin(angle, degrees)
+        base[i][2] = g_iceSpot[id][2]
+    }
+
+    for (new i; i < ICE_SHARDS; i++) {
+        new Float:tip[3], Float:angle = 360.0 * (i + 0.5) / ICE_SHARDS
+        tip[0] = g_iceSpot[id][0] + 8.0 * floatcos(angle, degrees)
+        tip[1] = g_iceSpot[id][1] + 8.0 * floatsin(angle, degrees)
+        tip[2] = g_iceSpot[id][2] + (i % 2 ? 13.0 : 8.0)
+        ice_beam(base[i], tip, 12)
+        ice_beam(base[i], base[(i + 1) % ICE_SHARDS], 8)
+    }
+}
+
+ice_beam(const Float:from[3], const Float:to[3], width)
+{
+    message_begin(MSG_BROADCAST, SVC_TEMPENTITY)
+    write_byte(TE_BEAMPOINTS)
+    write_coord(floatround(from[0]))
+    write_coord(floatround(from[1]))
+    write_coord(floatround(from[2]))
+    write_coord(floatround(to[0]))
+    write_coord(floatround(to[1]))
+    write_coord(floatround(to[2]))
+    write_short(g_sprBeam)
+    write_byte(0) // start frame
+    write_byte(0) // frame rate
+    write_byte(floatround(ICE_REFRESH * 10.0) + 2) // life, in 0.1 seconds
+    write_byte(width)
+    write_byte(0) // noise
+    write_byte(170)
+    write_byte(225)
+    write_byte(255)
+    write_byte(ICE_BRIGHTNESS)
+    write_byte(0) // scroll speed
+    message_end()
 }
 
 // ----------------------------------------------------------------------------
@@ -965,7 +1024,7 @@ start_new_round()
         g_frozen[id] = false
         remove_task(TASK_UNFREEZE + id)
         remove_task(TASK_RAMBO + id)
-        stop_frozen_glow(id)
+        stop_ice(id)
     }
     client_cmd(0, "-attack")
     reset_kart()
@@ -1671,8 +1730,7 @@ reset_rambo()
     g_teamHasLastMan[CS_TEAM_CT] = false
 }
 
-// John Rambo glows gold, headband wearers in their team's color (only in the
-// rambo round), the frozen faintly blue
+// John Rambo glows gold, headband wearers in their team's color
 update_rambo_glow(id)
 {
     if (!is_user_alive(id))
@@ -1685,7 +1743,7 @@ update_rambo_glow(id)
     else if (g_headbands[id])
         set_user_rendering(id, kRenderFxGlowShell, 255, 0, 0, kRenderNormal, 20)
     else
-        frozen_glow_or_none(id)
+        set_user_rendering(id)
 }
 
 rambo_death(killer, victim)
@@ -2221,16 +2279,8 @@ update_kart_glow(id, Float:now)
     } else if (g_blueShellFrom[id]) {
         glow(id, 0, 80, 255)
     } else {
-        frozen_glow_or_none(id)
-    }
-}
-
-frozen_glow_or_none(id)
-{
-    if (g_frozenGlow[id])
-        set_user_rendering(id, kRenderFxGlowShell, 30, 60, 110, kRenderNormal, FROZEN_GLOW)
-    else
         set_user_rendering(id)
+    }
 }
 
 glow(ent, r, g, b)
