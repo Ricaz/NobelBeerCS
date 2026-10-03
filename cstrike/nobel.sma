@@ -26,6 +26,13 @@
 #define FROZEN_SPEED 0.1
 #define FLASH_PROTECTION_TIME 8.0
 #define MAPEND_PAUSE_TIME 300.0
+// Frozen after a kill: a faint blue glow (shell thickness)
+#define FROZEN_GLOW 4
+
+// No server frame for this long (seconds): the engine is paused
+#define PAUSED_AFTER 0.25
+// The game has run this long (game time) while we think it's paused: it isn't
+#define PAUSE_SYNC_GRACE 0.5
 #define ROUND_ENDING_WARNING 19.0
 #define SOCKET_RETRY_DELAY 10.0
 
@@ -272,6 +279,13 @@ new bool:g_endModeAfterRound
 new bool:g_paused
 // A pause or unpause was sent to a client and its pauseAck hasn't come back yet
 new bool:g_pauseToggling
+// Why the game is paused, for the admin menu's title (empty: paused another way)
+new g_pauseReason[96]
+// When the server last ran a frame (real time) and when we saw the game pause (game
+// time). The engine runs no frames while paused, but still handles client commands
+// like menu choices, so this tells whether it's really paused.
+new Float:g_lastFrame
+new Float:g_pausedAt
 new g_pcvarPausable
 new g_pausableBefore = -1
 new g_roundCount
@@ -290,6 +304,7 @@ new Float:g_flashBangAt
 new bool:g_flashProtectionActive
 
 new bool:g_frozen[MAX_PLAYERS + 1]
+new bool:g_frozenGlow[MAX_PLAYERS + 1]
 new bool:g_announceUnfreeze[MAX_PLAYERS + 1]
 new bool:g_boostOnUnfreeze[MAX_PLAYERS + 1]
 // Rambo: we sent this player +attack; and when we may send it again
@@ -722,6 +737,7 @@ public client_disconnected(id)
 {
     g_frozen[id] = false
     remove_task(TASK_UNFREEZE + id)
+    stop_frozen_glow(id)
     remove_task(TASK_KART_BLUESHELL + id)
     g_spinStart[id] = 0.0
     g_item[id] = ITEM_NONE
@@ -864,7 +880,8 @@ public on_reset_maxspeed(id)
         set_user_maxspeed(id, g_kartSpeed[id])
 }
 
-freeze_player(id, Float:duration = FREEZE_TIME, bool:announce = true)
+// glow: frozen to drink (not stunned in Mario Kart), glowing faintly blue
+freeze_player(id, Float:duration = FREEZE_TIME, bool:announce = true, bool:glow = true)
 {
     if (!is_user_alive(id))
         return
@@ -876,12 +893,18 @@ freeze_player(id, Float:duration = FREEZE_TIME, bool:announce = true)
 
     remove_task(TASK_UNFREEZE + id)
     set_task(duration, "task_unfreeze", TASK_UNFREEZE + id)
+
+    if (glow && !g_frozenGlow[id]) {
+        g_frozenGlow[id] = true
+        update_glow(id)
+    }
 }
 
 public task_unfreeze(taskid)
 {
     new id = taskid - TASK_UNFREEZE
     g_frozen[id] = false
+    stop_frozen_glow(id)
 
     if (is_user_alive(id)) {
         ExecuteHamB(Ham_CS_Player_ResetMaxSpeed, id)
@@ -890,6 +913,27 @@ public task_unfreeze(taskid)
         if (g_boostOnUnfreeze[id] && g_mode == MODE_KART && g_raceStarted && !g_raceOver)
             start_boost(id)
     }
+}
+
+stop_frozen_glow(id)
+{
+    if (!g_frozenGlow[id])
+        return
+    g_frozenGlow[id] = false
+    // The glow updates skip the dead, who would otherwise respawn glowing
+    if (is_user_alive(id))
+        update_glow(id)
+    else if (is_user_connected(id))
+        set_user_rendering(id)
+}
+
+// The glow a player should have: Mario Kart's or rambo's, or frozen blue
+update_glow(id)
+{
+    if (g_mode == MODE_KART)
+        update_kart_glow(id, get_gametime())
+    else
+        update_rambo_glow(id)
 }
 
 // ----------------------------------------------------------------------------
@@ -916,6 +960,7 @@ start_new_round()
         g_frozen[id] = false
         remove_task(TASK_UNFREEZE + id)
         remove_task(TASK_RAMBO + id)
+        stop_frozen_glow(id)
     }
     client_cmd(0, "-attack")
     reset_kart()
@@ -1614,7 +1659,8 @@ reset_rambo()
     g_teamHasLastMan[CS_TEAM_CT] = false
 }
 
-// John Rambo glows gold, headband wearers red
+// John Rambo glows gold, headband wearers red (only in the rambo round), the
+// frozen faintly blue
 update_rambo_glow(id)
 {
     if (!is_user_alive(id))
@@ -1625,7 +1671,7 @@ update_rambo_glow(id)
     else if (g_headbands[id])
         set_user_rendering(id, kRenderFxGlowShell, 255, 0, 0, kRenderNormal, 20)
     else
-        set_user_rendering(id)
+        frozen_glow_or_none(id)
 }
 
 rambo_death(killer, victim)
@@ -2161,8 +2207,16 @@ update_kart_glow(id, Float:now)
     } else if (g_blueShellFrom[id]) {
         glow(id, 0, 80, 255)
     } else {
-        set_user_rendering(id)
+        frozen_glow_or_none(id)
     }
+}
+
+frozen_glow_or_none(id)
+{
+    if (g_frozenGlow[id])
+        set_user_rendering(id, kRenderFxGlowShell, 30, 60, 110, kRenderNormal, FROZEN_GLOW)
+    else
+        set_user_rendering(id)
 }
 
 glow(ent, r, g, b)
@@ -2814,7 +2868,7 @@ public task_blueshell(taskid)
 stun(id)
 {
     screen_fade(id, KART_STUN_TIME, 0, 0, 0, 255)
-    freeze_player(id, KART_STUN_TIME, false)
+    freeze_player(id, KART_STUN_TIME, false, false)
     spin(id, KART_STUN_TIME, 3)
     hop(id, 250.0)
 }
@@ -2958,7 +3012,7 @@ bool:spin_out(victim, attacker, const item[])
     if (!can_be_hit(victim))
         return false
 
-    freeze_player(victim, KART_SPIN_TIME, false)
+    freeze_player(victim, KART_SPIN_TIME, false, false)
     spin(victim, KART_SPIN_TIME, 2)
     hop(victim, 200.0)
     // Each item has its own hit sound (mk_hit_banana etc.), or the general mk_hit
@@ -3591,7 +3645,7 @@ pause_or_freeze(killer, const reason[], any:...)
 
 create_pause_menu()
 {
-    g_pauseMenu = menu_create("ADMIN PAUSE MENU", "pause_menu_handler")
+    g_pauseMenu = menu_create("PAUSED", "pause_menu_handler")
 
     // Push "Unpause" down to key 0 so it isn't pressed by accident
     for (new i; i < 9; i++)
@@ -3607,9 +3661,11 @@ create_pause_menu()
     menu_setprop(g_kartPauseMenu, MPROP_PERPAGE, 0)
 }
 
+// The menus only ever unpause. "pause" toggles, so unpausing a game that isn't
+// paused (a menu left over after someone unpaused another way) would pause it.
 public pause_menu_handler(id, menu, item)
 {
-    if (item == 9 && g_paused) {
+    if (item == 9 && check_paused()) {
         log_admin(id, "unpaused the game")
         unpause_game()
     }
@@ -3619,7 +3675,7 @@ public pause_menu_handler(id, menu, item)
 // 9: back to normal rounds from the next one; 0: Mario Kart again
 public kart_pause_menu_handler(id, menu, item)
 {
-    if (!g_paused || item != 8 && item != 9)
+    if (item != 8 && item != 9 || !check_paused())
         return PLUGIN_HANDLED
 
     if (item == 8 && g_mode == MODE_KART) {
@@ -3638,12 +3694,12 @@ public kart_pause_menu_handler(id, menu, item)
 // reason: e.g. "teamkill by %s"
 pause_game(const reason[], any:...)
 {
-    if (g_paused)
+    // The first of several pausing events in one frame is the reason
+    if (g_paused || g_pauseToggling)
         return
 
-    new why[96]
-    vformat(why, charsmax(why), reason, 2)
-    log_amx("Pausing the game: %s", why)
+    vformat(g_pauseReason, charsmax(g_pauseReason), reason, 2)
+    log_amx("Pausing the game: %s", g_pauseReason)
     toggle_pause()
 }
 
@@ -3694,16 +3750,59 @@ public task_pause_ack_timeout()
     }
 }
 
+bool:engine_paused()
+{
+    return Float:engfunc(EngFunc_Time) - g_lastFrame > PAUSED_AFTER
+}
+
+// Whether the game is paused, correcting g_paused if it was paused or unpaused some
+// other way (e.g. "pause" in a client console, without the pauseAck)
+bool:check_paused()
+{
+    new bool:paused = engine_paused()
+    if (paused != g_paused && !g_pauseToggling)
+        sync_pause(paused)
+    return paused
+}
+
+sync_pause(bool:paused)
+{
+    g_pauseReason[0] = EOS
+    log_amx("The game was %s without the plugin", paused ? "paused" : "unpaused")
+    set_paused(paused)
+}
+
+public server_frame()
+{
+    g_lastFrame = Float:engfunc(EngFunc_Time)
+
+    // The game is running while we think it's paused (it was unpaused another way,
+    // or the pause never happened, e.g. with pausable 0): hide the menu
+    if (g_paused && !g_pauseToggling && get_gametime() - g_pausedAt > PAUSE_SYNC_GRACE)
+        sync_pause(false)
+}
+
 // Both toggle_pause() and amx_pause make a client run "pause;pauseAck". admincmd
 // blocks pauseAck, so this has to be the client_command forward and not register_clcmd.
 public client_command(id)
 {
     new cmd[16]
     read_argv(0, cmd, charsmax(cmd))
-    if (!equal(cmd, "pauseAck"))
+    if (!equal(cmd, "pauseAck")) {
+        // Paused another way: any client command (e.g. chat) brings up the menu
+        if (!g_paused && !g_pauseToggling && engine_paused())
+            sync_pause(true)
         return PLUGIN_CONTINUE
+    }
 
-    g_paused = !g_paused
+    set_paused(!g_paused)
+    return PLUGIN_CONTINUE
+}
+
+set_paused(bool:paused)
+{
+    g_paused = paused
+    g_pausedAt = get_gametime()
     g_pauseToggling = false
     remove_task(TASK_PAUSE_ACK)
     log_amx(g_paused ? "Game paused" : "Game resumed")
@@ -3715,17 +3814,26 @@ public client_command(id)
         g_pausableBefore = -1
     }
 
-    if (g_setting[SET_PAUSE] || g_mode == MODE_KART)
+    // Always hidden on unpause, in case the settings changed while it was up
+    if (!g_paused || g_setting[SET_PAUSE] || g_mode == MODE_KART)
         show_pause_menu(g_paused)
 
-    if (!g_paused)
+    if (!g_paused) {
         g_kartEndPause = false
-
-    return PLUGIN_CONTINUE
+        g_pauseReason[0] = EOS
+    }
 }
 
 show_pause_menu(bool:show)
 {
+    // "PAUSED: Teamkill by X"
+    new title[128] = "PAUSED"
+    if (g_pauseReason[0]) {
+        formatex(title, charsmax(title), "PAUSED: %s", g_pauseReason)
+        title[8] = char_to_upper(title[8])
+    }
+    menu_setprop(g_pauseMenu, MPROP_TITLE, title)
+
     new players[MAX_PLAYERS], num
     get_players(players, num, "ch")
     for (new i; i < num; i++) {
