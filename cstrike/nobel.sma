@@ -106,8 +106,8 @@
 #define KART_FIREBALL_SLOW_TIME 1.5
 // Item boxes are put out this far apart until the map is covered, so big maps get
 // more of them (up to KART_BOXES)
-#define KART_BOXES 48
-#define KART_BOX_SPACING 400.0
+#define KART_BOXES 34
+#define KART_BOX_SPACING 500.0
 #define KART_BOX_RESPAWN 10.0
 #define KART_SPIN_TIME 1.5
 #define KART_STUN_TIME 3.0
