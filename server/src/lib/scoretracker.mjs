@@ -77,9 +77,11 @@ function awards(scores) {
 		return { title, description, names, value: format(best) }
 	}
 	const beers = (sips) => `${(sips / SIPS_PER_BEER).toFixed(1)} øl`
+	// Fights (kills + deaths) per round played, so joining late or leaving early doesn't count
+	const fights = (p) => (p.kills + p.deaths) / Math.max(1, p.rounds)
 
 	return [
-		pick('Ølsfatter', 'Most øls', (p) => p.sips, beers),
+		pick('Pacifist run', 'Least engagement', fights, (v) => `${v.toFixed(2)} fights per round`, true),
 		pick('Forhåbentlig stiv tryhard', 'Best K/D', (p) => p.kills ? kd(p) : 0, (v) => v.toFixed(2)),
 		pick('Top Leif', 'Most knife kills', (p) => p.knifekills),
 		pick('Leifs favorit', 'Most knifed', (p) => p.knifed),

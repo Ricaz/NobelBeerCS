@@ -48,6 +48,17 @@
 #define TELESWAP_CHANCE 20
 #define TELESWAP_EARLIEST 10.0
 
+// Flash: chance per normal round that Queen's Flash fades in on the big screen, not
+// before FLASH_EARLIEST seconds into the round. On "FLASH!" everyone alive throws a
+// flashbang, which goes off on the "aaah" FLASH_SONG_SCREAM seconds into the song
+// (flash/*.mp3), after a flashbang's usual fuse.
+#define FLASH_CHANCE 33
+#define FLASH_EARLIEST 10.0
+#define FLASH_SONG_SCREAM 12.7
+#define FLASH_FUSE 1.5
+// Marks our flashbangs (pev_iuser4), so the hooks leave real grenades alone
+#define FLASHBANG_MARK 0x464C53
+
 // Noob buff: free gear after this many rounds in a row without a kill (additive),
 // for players in the lower half by sips with fewer kills than deaths
 #define NOOBBUFF_VEST_ROUNDS 2
@@ -134,6 +145,8 @@ enum (+= 100)
     TASK_STATS_TIMEOUT,
     TASK_STATS_REFRESH,
     TASK_TELESWAP,
+    TASK_FLASH,
+    TASK_FLASH_THROW,
     TASK_PAUSE_ACK,
     TASK_KART,
     TASK_KART_COUNTDOWN,
@@ -183,7 +196,7 @@ new const SETTING_NAME[Setting][] = {
     "pausing",
     "knifepausing",
     "badum",
-    "teamflash",
+    "flash",
     "antizoompistol",
     "flashprotection",
     "noobbuff",
@@ -191,7 +204,7 @@ new const SETTING_NAME[Setting][] = {
     "teleswap",
     "jungle"
 }
-new const bool:SETTING_ANNOUNCE[Setting] = { true, true, true, false, true, true, true, true, true, true }
+new const bool:SETTING_ANNOUNCE[Setting] = { true, true, true, true, true, true, true, true, true, true }
 new bool:g_setting[Setting] = { false, false, true, false, false, false, true, true, false, false }
 
 // Special rounds. Only one can be active or queued at a time.
@@ -236,6 +249,7 @@ new const KART_CLASSES[][] = { "nobel_itembox", "nobel_banana", "nobel_shell", "
 new const ITEMBOX_MODEL[] = "models/w_weaponbox.mdl"
 new const ITEMBOX_FALLBACK_MODEL[] = "models/w_kevlar.mdl"
 new const BANANA_MODEL[] = "models/w_flashbang.mdl"
+new const GRENADE_HIT_SOUNDS[][] = { "weapons/grenade_hit1.wav", "weapons/grenade_hit2.wav", "weapons/grenade_hit3.wav" }
 new const SHELL_MODEL[] = "models/w_hegrenade.mdl"
 new const BOBOMB_MODEL[] = "models/w_smokegrenade.mdl"
 // Half-Life's fireball (in valve/)
@@ -269,7 +283,10 @@ new bool:g_timeElapsed
 new bool:g_aloneAnnounced
 new bool:g_hostageTouched
 new bool:g_teamsSwitched
-new bool:g_flashThrown
+// Flash: whether it has happened (or was triggered) this round, and when its
+// flashbangs go off
+new bool:g_flashThisRound
+new Float:g_flashBangAt
 new bool:g_flashProtectionActive
 
 new bool:g_frozen[MAX_PLAYERS + 1]
@@ -378,6 +395,8 @@ public plugin_precache()
     copy(g_itemboxModel, charsmax(g_itemboxModel), file_exists(ITEMBOX_MODEL, true) ? ITEMBOX_MODEL : ITEMBOX_FALLBACK_MODEL)
     precache_model(g_itemboxModel)
     precache_model(BANANA_MODEL)
+    for (new i; i < sizeof GRENADE_HIT_SOUNDS; i++)
+        precache_sound(GRENADE_HIT_SOUNDS[i])
     precache_model(SHELL_MODEL)
     precache_model(BOBOMB_MODEL)
     precache_model(FIREBALL_SPRITE)
@@ -412,7 +431,6 @@ public plugin_init()
     if (g_msgAccount)
         register_message(g_msgAccount, "on_account")
     RegisterHam(Ham_CS_Player_ResetMaxSpeed, "player", "on_reset_maxspeed", 1)
-    RegisterHam(Ham_Weapon_WeaponIdle, "weapon_flashbang", "on_flashbang_idle")
     RegisterHam(Ham_Item_Deploy, "weapon_hegrenade", "on_hegrenade_deploy", 1)
     RegisterHam(Ham_TraceAttack, "hostage_entity", "on_hostage_hurt")
     RegisterHam(Ham_TakeDamage, "hostage_entity", "on_hostage_hurt")
@@ -421,6 +439,8 @@ public plugin_init()
     RegisterHam(Ham_Touch, "armoury_entity", "on_weapon_touch")
     RegisterHam(Ham_Touch, "weaponbox", "on_weapon_touch")
     register_forward(FM_PlayerPreThink, "on_player_prethink")
+    RegisterHam(Ham_Think, "grenade", "on_grenade_think")
+    RegisterHam(Ham_Touch, "grenade", "on_grenade_touch")
     register_touch("nobel_itembox", "player", "on_itembox_touch")
     register_touch("nobel_banana", "player", "on_banana_touch")
     register_touch("nobel_shell", "player", "on_shell_touch")
@@ -450,6 +470,7 @@ public plugin_init()
     register_concmd("nobel_maps", "cmd_nobel_maps", ACCESS_PUBLIC, "Lists available maps on the server.")
     register_concmd("nobel_theme", "cmd_nobel_theme", ACCESS_ADMIN, "<theme> - Change sound theme.")
     register_concmd("nobel_knife_now", "cmd_nobel_end_mode_now", ACCESS_ADMIN, "End the current special round immediately.")
+    register_concmd("nobel_flashnow", "cmd_nobel_flashnow", ACCESS_ADMIN, "Flash now (and not again on its own this round).")
     register_concmd("nobel_teleswapnow", "cmd_nobel_teleswapnow", ACCESS_ADMIN, "[player] [player] - Teleswap now: two named players, or a random T and CT.")
     register_concmd("nobel_shuffle", "cmd_nobel_shuffle", ACCESS_ADMIN, "Shuffles all players.")
     register_concmd("nobel_balance", "cmd_nobel_balance", ACCESS_ADMIN, "<games> - Rebalance teams based on each player's last N games.")
@@ -745,11 +766,6 @@ public on_player_spawn(id)
     if (!g_enabled)
         return
 
-    if (g_setting[SET_FLASH]) {
-        give_item(id, "weapon_flashbang")
-        give_item(id, "weapon_flashbang")
-    }
-
     if (g_mode == MODE_RAMBO) {
         set_user_health(id, RAMBO_HEALTH)
         give_item(id, "item_assaultsuit")
@@ -893,6 +909,7 @@ start_new_round()
     remove_task(TASK_ROUND_ENDING)
     remove_task(TASK_HURRYUP)
     remove_task(TASK_TELESWAP)
+    reset_flash()
 
     for (new id = 1; id <= MAX_PLAYERS; id++) {
         g_forcedAttack[id] = false
@@ -968,11 +985,6 @@ public on_round_start()
     if (g_mode == MODE_RAMBO)
         hand_out_headbands()
 
-    if (g_setting[SET_FLASH]) {
-        g_flashThrown = false
-        client_cmd(0, "use weapon_flashbang")
-    }
-
     set_task(8.0, "task_buy_check", TASK_BUY_CHECK)
     set_task(get_cvar_float("mp_roundtime") * 60.0 - ROUND_ENDING_WARNING, "task_round_ending", TASK_ROUND_ENDING)
 
@@ -985,6 +997,11 @@ public on_round_start()
     new Float:roundTime = get_cvar_float("mp_roundtime") * 60.0
     if (g_setting[SET_TELESWAP] && g_mode == MODE_NORMAL && random_num(1, 100) <= TELESWAP_CHANCE && roundTime - 5.0 > TELESWAP_EARLIEST)
         set_task(random_float(TELESWAP_EARLIEST, roundTime - 5.0), "task_teleswap", TASK_TELESWAP)
+
+    // The flashbangs go off at least 5 seconds before the round timer runs out
+    new Float:flashLatest = roundTime - FLASH_SONG_SCREAM - 5.0
+    if (g_setting[SET_FLASH] && g_mode == MODE_NORMAL && random_num(1, 100) <= FLASH_CHANCE && flashLatest > FLASH_EARLIEST)
+        set_task(random_float(FLASH_EARLIEST, flashLatest), "task_flash", TASK_FLASH)
 }
 
 // ----------------------------------------------------------------------------
@@ -1062,6 +1079,138 @@ flash_fade(id)
     write_byte(0) // b
     write_byte(255) // a
     message_end()
+}
+
+// ----------------------------------------------------------------------------
+// Flash (nobel_flash): Queen's Flash fades in on the big screen, and everyone
+// alive throws a flashbang on "FLASH!", which goes off on the "aaah"
+// ----------------------------------------------------------------------------
+
+public task_flash()
+{
+    if (g_enabled && g_setting[SET_FLASH] && !g_paused && !g_flashThisRound)
+        start_flash()
+}
+
+bool:flash_in_progress()
+{
+    return task_exists(TASK_FLASH_THROW) || get_gametime() < g_flashBangAt
+}
+
+// Also triggered by nobel_flashnow, after which it won't come on its own this round
+start_flash()
+{
+    g_flashThisRound = true
+    remove_task(TASK_FLASH)
+    send_event("flash")
+    set_task(FLASH_SONG_SCREAM - FLASH_FUSE, "task_flash_throw", TASK_FLASH_THROW)
+    log_amx("Flash!")
+}
+
+public task_flash_throw()
+{
+    new players[MAX_PLAYERS], num
+    get_players(players, num, "ah")
+    g_flashBangAt = get_gametime() + FLASH_FUSE
+    for (new i; i < num; i++)
+        throw_flashbang(players[i])
+}
+
+// A flashbang thrown the way the game throws one, without switching weapons. It
+// bounces and goes off after the fuse like any other (on_grenade_touch/think).
+throw_flashbang(id)
+{
+    new ent = engfunc(EngFunc_CreateNamedEntity, engfunc(EngFunc_AllocString, "grenade"))
+    if (!pev_valid(ent))
+        return
+
+    // Aimed a little up, and harder the higher it's aimed (CFlashbang's throw)
+    new Float:angles[3], Float:punch[3], Float:aim[3]
+    pev(id, pev_v_angle, angles)
+    pev(id, pev_punchangle, punch)
+    angles[0] += punch[0]
+    angles[1] += punch[1]
+    angles[0] = angles[0] < 0.0 ? -10.0 + angles[0] * (80.0 / 90.0) : -10.0 + angles[0] * (100.0 / 90.0)
+    new Float:speed = (90.0 - angles[0]) * 6.0
+    if (speed > 750.0)
+        speed = 750.0
+    angle_vector(angles, ANGLEVECTOR_FORWARD, aim)
+
+    new Float:origin[3], Float:viewOfs[3], Float:velocity[3]
+    pev(id, pev_origin, origin)
+    pev(id, pev_view_ofs, viewOfs)
+    pev(id, pev_velocity, velocity)
+    for (new i; i < 3; i++) {
+        origin[i] += viewOfs[i] + aim[i] * 16.0
+        velocity[i] += aim[i] * speed
+    }
+
+    // Not CGrenade's Spawn (it sets an unprecached model). The model is set before
+    // the owner, so CSX doesn't count it as a throw ("TIM FLAAAASH" for everyone).
+    set_pev(ent, pev_movetype, MOVETYPE_BOUNCE)
+    set_pev(ent, pev_solid, SOLID_BBOX)
+    engfunc(EngFunc_SetModel, ent, "models/w_flashbang.mdl")
+    engfunc(EngFunc_SetSize, ent, Float:{ 0.0, 0.0, 0.0 }, Float:{ 0.0, 0.0, 0.0 })
+    engfunc(EngFunc_SetOrigin, ent, origin)
+    set_pev(ent, pev_velocity, velocity)
+    set_pev(ent, pev_angles, Float:{ 0.0, 0.0, 0.0 })
+    set_pev(ent, pev_avelocity, Float:{ 0.0, 600.0, 0.0 })
+    set_pev(ent, pev_gravity, 0.55)
+    set_pev(ent, pev_friction, 0.7)
+    // The explosion lifts itself off the floor by (dmg - 24) * 0.6 units
+    set_pev(ent, pev_dmg, 30.0)
+    set_pev(ent, pev_owner, id)
+    set_pev(ent, pev_iuser4, FLASHBANG_MARK)
+    set_pev(ent, pev_dmgtime, g_flashBangAt)
+    set_pev(ent, pev_nextthink, get_gametime() + 0.1)
+}
+
+// The fuse (CGrenade's TumbleThink): killing a grenade detonates it, and the
+// game's grenade explosion is a flashbang's
+public on_grenade_think(ent)
+{
+    if (pev(ent, pev_iuser4) != FLASHBANG_MARK)
+        return HAM_IGNORED
+
+    new Float:dmgTime
+    pev(ent, pev_dmgtime, dmgTime)
+    if (get_gametime() >= dmgTime) {
+        set_pev(ent, pev_iuser4, 0)
+        ExecuteHam(Ham_Killed, ent, 0, 0)
+    } else {
+        set_pev(ent, pev_nextthink, get_gametime() + 0.1)
+    }
+    return HAM_SUPERCEDE
+}
+
+// Bouncing (CGrenade's BounceTouch): it rolls to a stop on the ground, with the
+// usual sound on the first few bounces
+public on_grenade_touch(ent, other)
+{
+    if (pev(ent, pev_iuser4) != FLASHBANG_MARK || other == pev(ent, pev_owner))
+        return HAM_IGNORED
+
+    new bounces = pev(ent, pev_iuser3)
+    set_pev(ent, pev_iuser3, bounces + 1)
+    if (pev(ent, pev_flags) & FL_ONGROUND) {
+        new Float:velocity[3]
+        pev(ent, pev_velocity, velocity)
+        for (new i; i < 3; i++)
+            velocity[i] *= 0.8
+        set_pev(ent, pev_velocity, velocity)
+    } else if (bounces < 5) {
+        emit_sound(ent, CHAN_VOICE, GRENADE_HIT_SOUNDS[random(sizeof GRENADE_HIT_SOUNDS)], 0.25, ATTN_NORM, 0, PITCH_NORM)
+    }
+    return HAM_SUPERCEDE
+}
+
+// A new round: the round restart has removed any grenades
+reset_flash()
+{
+    remove_task(TASK_FLASH)
+    remove_task(TASK_FLASH_THROW)
+    g_flashThisRound = false
+    g_flashBangAt = 0.0
 }
 
 public on_round_end()
@@ -3660,14 +3809,6 @@ public grenade_throw(id, grenade, weapon)
         client_print(0, print_chat, "%n: TIM FLAAAASH", id)
 }
 
-public on_flashbang_idle(weapon)
-{
-    if (g_setting[SET_FLASH] && !g_flashThrown) {
-        g_flashThrown = true
-        client_cmd(0, "-attack")
-    }
-}
-
 public on_screenfade(id)
 {
     if (!g_flashProtectionActive)
@@ -4140,6 +4281,21 @@ public cmd_nobel_maps(id, level, cid)
     } while (next_file(dir, file, charsmax(file)))
     close_dir(dir)
 
+    return PLUGIN_HANDLED
+}
+
+public cmd_nobel_flashnow(id, level, cid)
+{
+    if (!cmd_access(id, level, cid, 1) || !g_enabled)
+        return PLUGIN_HANDLED
+
+    if (flash_in_progress()) {
+        console_print(id, "Flash is already on its way.")
+        return PLUGIN_HANDLED
+    }
+
+    log_admin(id, "triggered a flash")
+    start_flash()
     return PLUGIN_HANDLED
 }
 

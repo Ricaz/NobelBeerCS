@@ -102,6 +102,12 @@ All the commands are toggleable.
   * Each round has a 20% chance that a random T and CT swap places (at least 30 seconds in),
     with a short flash and a sound
   * `nobel_teleswapnow [player] [player]` swaps two players right away (a random T and CT without names)
+* Flash (`nobel_flash`, off by default)
+  * A third of normal rounds (at least 10 seconds in), Queen's Flash fades in on the big screen.
+    On "FLASH!" everyone alive throws a flashbang, without switching weapons, and they all go
+    off on the "aaah"
+  * `nobel_flashnow` does it right away (any round), and then it won't happen again on its
+    own that round
 * The jungle (`nobel_jungle`, off by default)
   * The map goes dark, and everyone has a flashlight (F). Takes effect right away and lasts
     until it's turned off or the map changes
